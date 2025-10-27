@@ -3,7 +3,7 @@
  * /privileges:
  *   get:
  *     summary: Get all privileges
- *     description: Get complete list of all privileges without pagination (requires ADMIN or LAB_MANAGER role)
+ *     description: Get complete list of all privileges without pagination. **Required Privilege:** VIEW_ROLE
  *     tags: [Privileges]
  *     security:
  *       - bearerAuth: []
@@ -55,7 +55,7 @@
  * /privileges/{id}:
  *   get:
  *     summary: Get privilege by ID
- *     description: Get a specific privilege by ID (requires ADMIN or LAB_MANAGER role)
+ *     description: Get a specific privilege by ID. **Required Privilege:** VIEW_ROLE
  *     tags: [Privileges]
  *     security:
  *       - bearerAuth: []

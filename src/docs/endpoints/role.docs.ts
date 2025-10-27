@@ -3,7 +3,7 @@
  * /roles:
  *   post:
  *     summary: Create a new role
- *     description: Create a new role (requires ADMIN or LAB_MANAGER role)
+ *     description: Create a new role. **Required Privilege:** CREATE_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -61,7 +61,7 @@
  *
  *   get:
  *     summary: Get all roles
- *     description: Get paginated list of all roles (requires ADMIN or LAB_MANAGER role)
+ *     description: Get paginated list of all roles. **Required Privilege:** VIEW_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -125,7 +125,7 @@
  * /roles/{id}:
  *   get:
  *     summary: Get role by ID
- *     description: Get a specific role by their ID (requires ADMIN or LAB_MANAGER role)
+ *     description: Get a specific role by their ID. **Required Privilege:** VIEW_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -161,7 +161,7 @@
  *
  *   put:
  *     summary: Update role
- *     description: Update role information (requires ADMIN or LAB_MANAGER role)
+ *     description: Update role information. **Required Privilege:** UPDATE_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -203,7 +203,7 @@
  *
  *   delete:
  *     summary: Delete role
- *     description: Delete a role by ID (requires ADMIN or LAB_MANAGER role)
+ *     description: Delete a role by ID. **Required Privilege:** DELETE_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -239,7 +239,7 @@
  * /roles/{id}/with-privileges:
  *   get:
  *     summary: Get role with privileges details
- *     description: Get a role with its privileges populated (requires ADMIN or LAB_MANAGER role)
+ *     description: Get a role with its privileges populated. **Required Privilege:** VIEW_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -275,7 +275,7 @@
  * /roles/{id}/privileges:
  *   post:
  *     summary: Assign privilege to role
- *     description: Assign a privilege to a role (requires ADMIN or LAB_MANAGER role)
+ *     description: Assign a privilege to a role. **Required Privilege:** UPDATE_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
@@ -315,7 +315,7 @@
  * /roles/{id}/privileges/{privilegeId}:
  *   delete:
  *     summary: Remove privilege from role
- *     description: Remove a privilege from a role (requires ADMIN or LAB_MANAGER role)
+ *     description: Remove a privilege from a role. **Required Privilege:** UPDATE_ROLE
  *     tags: [Roles]
  *     security:
  *       - bearerAuth: []
