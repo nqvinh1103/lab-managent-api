@@ -1,14 +1,12 @@
 import { Router } from "express";
 import { getAllPrivileges, getPrivilegeById } from "~/controllers/privilege.controller";
-import { authMiddleware } from "~/middlewares/auth.middleware";
-import { checkRole } from "~/middlewares/auth.middleware";
+import { authMiddleware, checkPrivilege } from "~/middlewares/auth.middleware";
+import { PRIVILEGES } from "~/constants/privileges";
 
 const router = Router();
-// Check if the user is ADMIN or LAB_MANAGER
-const roleCheck = checkRole(['ADMIN', 'LAB_MANAGER']);
 
-// Privilege read only for ADMIN and LAB_MANAGER 
-router.get('/', authMiddleware, roleCheck, getAllPrivileges);
-router.get('/:id', authMiddleware, roleCheck, getPrivilegeById);
+// Privilege read only - cần VIEW_ROLE để gán privilege cho role
+router.get('/', authMiddleware, checkPrivilege([PRIVILEGES.VIEW_ROLE]), getAllPrivileges);
+router.get('/:id', authMiddleware, checkPrivilege([PRIVILEGES.VIEW_ROLE]), getPrivilegeById);
 
 export default router;
