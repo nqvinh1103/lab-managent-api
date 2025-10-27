@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs';
-import { ObjectId, Sort } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
 import { CreateUserInput, UpdateUserInput, UserDocument } from '../models/User';
-import { createPaginationOptions, createSortOptions, createTextSearchFilter, OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
+import { OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
 
 export class UserService {
   private collection = getCollection<UserDocument>('users');
@@ -336,59 +336,4 @@ export class UserService {
     }
   }
 
-  async updateLastActivity(userId: string | ObjectId): Promise<OperationResult> {
-    try {
-      const objectId = toObjectId(userId);
-      if (!objectId) {
-        return {
-          success: false,
-          error: 'Invalid user ID'
-        };
-      }
-
-      const result = await this.collection.updateOne(
-        { _id: objectId },
-        { 
-          $set: { 
-            last_activity: new Date()
-          }
-        }
-      );
-
-      return {
-        success: true,
-        modifiedCount: result.modifiedCount
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      };
-    }
-  }
-
-  async searchUsers(searchTerm: string, page: number = 1, limit: number = 10): Promise<QueryResult<UserDocument[]>> {
-    try {
-      const { skip, limit: pageLimit } = createPaginationOptions(page, limit);
-      const sortOptions = createSortOptions('created_at', -1) as Sort;
-      const searchFilter = createTextSearchFilter(searchTerm, ['full_name', 'email', 'phone_number', 'identity_number']);
-
-      const users = await this.collection
-        .find(searchFilter)
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(pageLimit)
-        .toArray();
-
-      return {
-        success: true,
-        data: users
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      };
-    }
-  }
 }

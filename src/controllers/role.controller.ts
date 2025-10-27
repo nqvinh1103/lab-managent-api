@@ -209,38 +209,6 @@ export const deleteRole = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// Search roles
-export const searchRoles = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const search = req.query.search as string || '';
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-
-    const result = await getRoleService().searchRoles(search, page, limit);
-
-    if (!result.success) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: MESSAGES.DB_QUERY_ERROR,
-        error: result.error
-      });
-      return;
-    }
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data
-    });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to search roles'
-    });
-  }
-};
-
 // Assign privilege to role
 export const assignPrivilege = async (req: Request, res: Response): Promise<void> => {
   try {

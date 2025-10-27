@@ -7,7 +7,6 @@ import {
   getRoleById,
   getRoleWithPrivileges,
   removePrivilege,
-  searchRoles,
   updateRole
 } from '../../controllers/role.controller';
 import { authMiddleware, checkRole } from '../../middlewares/auth.middleware';
@@ -16,7 +15,6 @@ import {
   assignPrivilegeValidation,
   createRoleValidation,
   roleIdValidation,
-  searchRoleValidation,
   updateRoleValidation
 } from '../../middlewares/validations/role.validation';
 
@@ -40,15 +38,6 @@ router.get(
   authMiddleware,
   roleCheckMiddleware,
   getAllRoles
-);
-
-router.get(
-  '/search',
-  authMiddleware,
-  roleCheckMiddleware,
-  searchRoleValidation,
-  validationMiddleware,
-  searchRoles
 );
 
 router.get(

@@ -1,24 +1,22 @@
 import { Router } from 'express';
 import {
-    assignRole,
-    createUser,
-    deleteUser,
-    getAllUsers,
-    getUserById,
-    lockUser,
-    removeRole,
-    searchUsers,
-    unlockUser,
-    updateUser
+  assignRole,
+  createUser,
+  deleteUser,
+  getAllUsers,
+  getUserById,
+  lockUser,
+  removeRole,
+  unlockUser,
+  updateUser
 } from '../../controllers/user.controller';
 import { authMiddleware, checkRole } from '../../middlewares/auth.middleware';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
 import {
-    assignRoleValidation,
-    createUserValidation,
-    searchUserValidation,
-    updateUserValidation,
-    userIdValidation
+  assignRoleValidation,
+  createUserValidation,
+  updateUserValidation,
+  userIdValidation
 } from '../../middlewares/validations/user.validation';
 
 const router = Router();
@@ -41,15 +39,6 @@ router.get(
   authMiddleware,
   roleCheck,
   getAllUsers
-);
-
-router.get(
-  '/search',
-  authMiddleware,
-  roleCheck,
-  searchUserValidation,
-  validationMiddleware,
-  searchUsers
 );
 
 router.get(

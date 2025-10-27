@@ -1,7 +1,7 @@
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
 import { CreateRoleInput, RoleDocument, UpdateRoleInput } from '../models/Role';
-import { createPaginationOptions, createSortOptions, createTextSearchFilter, OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
+import { createPaginationOptions, createSortOptions, OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
 
 export class RoleService {
   private collection = getCollection<RoleDocument>('roles');
@@ -233,31 +233,6 @@ export class RoleService {
       return {
         success: true,
         modifiedCount: result.modifiedCount
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      };
-    }
-  }
-
-  async searchRoles(searchTerm: string, page: number = 1, limit: number = 10): Promise<QueryResult<RoleDocument[]>> {
-    try {
-      const { skip, limit: pageLimit } = createPaginationOptions(page, limit);
-      const sortOptions = createSortOptions('created_at', -1) as Sort
-      const searchFilter = createTextSearchFilter(searchTerm, ['role_name', 'role_code', 'role_description']);
-
-      const roles = await this.collection
-        .find(searchFilter)
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(pageLimit)
-        .toArray();
-
-      return {
-        success: true,
-        data: roles
       };
     } catch (error) {
       return {

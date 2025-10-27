@@ -16,7 +16,6 @@ export const errorHandler = (
   let statusCode = error.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR
   let message = error.message || MESSAGES.INTERNAL_ERROR
 
-  // Mongoose validation error
   if (error.name === 'ValidationError') {
     statusCode = HTTP_STATUS.BAD_REQUEST
     message = MESSAGES.VALIDATION_ERROR

@@ -2,6 +2,8 @@ import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
 import morgan from 'morgan'
+import swaggerUi from 'swagger-ui-express'
+import { swaggerSpec } from './config/swagger'
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.middleware'
 import routes from './routes'
 
@@ -30,6 +32,14 @@ if (NODE_ENV === 'development') {
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
+
+// Redirect root to API docs
+app.get('/', (req, res) => {
+  res.redirect('/api-docs')
+})
 
 // API routes
 app.use('/api', routes)
