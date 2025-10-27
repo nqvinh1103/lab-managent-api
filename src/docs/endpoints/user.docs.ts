@@ -3,7 +3,7 @@
  * /users:
  *   post:
  *     summary: Create a new user
- *     description: Create a new user account. Newly created users are automatically assigned the PATIENT role. (requires ADMIN or LAB_MANAGER role)
+ *     description: Create a new user account. Newly created users are automatically assigned the PATIENT role. **Required Privilege:** CREATE_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -76,7 +76,7 @@
  *
  *   get:
  *     summary: Get all users
- *     description: Get paginated list of all users (requires ADMIN or LAB_MANAGER role)
+ *     description: Get paginated list of all users. **Required Privilege:** VIEW_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -148,7 +148,7 @@
  * /users/{id}:
  *   get:
  *     summary: Get user by ID
- *     description: Get a specific user by their ID (requires ADMIN or LAB_MANAGER role)
+ *     description: Get a specific user by their ID. **Required Privilege:** VIEW_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -219,7 +219,7 @@
  *
  *   put:
  *     summary: Update user
- *     description: Update user information (requires ADMIN or LAB_MANAGER role)
+ *     description: Update user information. **Required Privilege:** MODIFY_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -291,7 +291,7 @@
  *
  *   delete:
  *     summary: Delete user
- *     description: Delete a user by ID (requires ADMIN or LAB_MANAGER role)
+ *     description: Delete a user by ID. **Required Privilege:** DELETE_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -352,7 +352,7 @@
  * /users/{id}/roles:
  *   post:
  *     summary: Assign role to user
- *     description: Assign a role to a user (requires ADMIN or LAB_MANAGER role)
+ *     description: Assign a role to a user. **Required Privilege:** MODIFY_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -421,7 +421,7 @@
  * /users/{id}/roles/{roleId}:
  *   delete:
  *     summary: Remove role from user
- *     description: Remove a role from a user (requires ADMIN or LAB_MANAGER role)
+ *     description: Remove a role from a user. **Required Privilege:** MODIFY_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -489,7 +489,7 @@
  * /users/{id}/lock:
  *   post:
  *     summary: Lock user account
- *     description: Lock a user account to prevent login (requires ADMIN or LAB_MANAGER role)
+ *     description: Lock a user account to prevent login. **Required Privilege:** LOCK_UNLOCK_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -551,7 +551,7 @@
  * /users/{id}/unlock:
  *   post:
  *     summary: Unlock user account
- *     description: Unlock a locked user account (requires ADMIN or LAB_MANAGER role)
+ *     description: Unlock a locked user account. **Required Privilege:** LOCK_UNLOCK_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []

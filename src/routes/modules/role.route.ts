@@ -9,7 +9,8 @@ import {
   removePrivilege,
   updateRole
 } from '../../controllers/role.controller';
-import { authMiddleware, checkRole } from '../../middlewares/auth.middleware';
+import { authMiddleware, checkPrivilege } from '../../middlewares/auth.middleware';
+import { PRIVILEGES } from '../../constants/privileges';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
 import {
   assignPrivilegeValidation,
@@ -20,14 +21,11 @@ import {
 
 const router = Router();
 
-// All routes require authentication and admin/lab_manager role
-const roleCheckMiddleware = checkRole(['ADMIN', 'LAB_MANAGER']);
-
 // Role CRUD
 router.post(
   '/',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.CREATE_ROLE]),
   createRoleValidation,
   validationMiddleware,
   createRole
@@ -36,14 +34,14 @@ router.post(
 router.get(
   '/',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.VIEW_ROLE]),
   getAllRoles
 );
 
 router.get(
   '/:id',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.VIEW_ROLE]),
   roleIdValidation,
   validationMiddleware,
   getRoleById
@@ -52,7 +50,7 @@ router.get(
 router.get(
   '/:id/with-privileges',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.VIEW_ROLE]),
   roleIdValidation,
   validationMiddleware,
   getRoleWithPrivileges
@@ -61,7 +59,7 @@ router.get(
 router.put(
   '/:id',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.UPDATE_ROLE]),
   updateRoleValidation,
   validationMiddleware,
   updateRole
@@ -70,7 +68,7 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.DELETE_ROLE]),
   roleIdValidation,
   validationMiddleware,
   deleteRole
@@ -80,7 +78,7 @@ router.delete(
 router.post(
   '/:id/privileges',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.UPDATE_ROLE]),
   assignPrivilegeValidation,
   validationMiddleware,
   assignPrivilege
@@ -89,7 +87,7 @@ router.post(
 router.delete(
   '/:id/privileges/:privilegeId',
   authMiddleware,
-  roleCheckMiddleware,
+  checkPrivilege([PRIVILEGES.UPDATE_ROLE]),
   removePrivilege
 );
 

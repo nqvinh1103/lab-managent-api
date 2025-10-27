@@ -10,7 +10,8 @@ import {
   unlockUser,
   updateUser
 } from '../../controllers/user.controller';
-import { authMiddleware, checkRole } from '../../middlewares/auth.middleware';
+import { authMiddleware, checkPrivilege } from '../../middlewares/auth.middleware';
+import { PRIVILEGES } from '../../constants/privileges';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
 import {
   assignRoleValidation,
@@ -21,14 +22,11 @@ import {
 
 const router = Router();
 
-// All routes require authentication and admin/lab_manager role
-const roleCheck = checkRole(['ADMIN', 'LAB_MANAGER']);
-
 // User CRUD
 router.post(
   '/',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.CREATE_USER]),
   createUserValidation,
   validationMiddleware,
   createUser
@@ -37,14 +35,14 @@ router.post(
 router.get(
   '/',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.VIEW_USER]),
   getAllUsers
 );
 
 router.get(
   '/:id',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.VIEW_USER]),
   userIdValidation,
   validationMiddleware,
   getUserById
@@ -53,7 +51,7 @@ router.get(
 router.put(
   '/:id',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.MODIFY_USER]),
   updateUserValidation,
   validationMiddleware,
   updateUser
@@ -62,7 +60,7 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.DELETE_USER]),
   userIdValidation,
   validationMiddleware,
   deleteUser
@@ -72,7 +70,7 @@ router.delete(
 router.post(
   '/:id/roles',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.MODIFY_USER]),
   assignRoleValidation,
   validationMiddleware,
   assignRole
@@ -81,7 +79,7 @@ router.post(
 router.delete(
   '/:id/roles/:roleId',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.MODIFY_USER]),
   removeRole
 );
 
@@ -89,7 +87,7 @@ router.delete(
 router.post(
   '/:id/lock',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.LOCK_UNLOCK_USER]),
   userIdValidation,
   validationMiddleware,
   lockUser
@@ -98,7 +96,7 @@ router.post(
 router.post(
   '/:id/unlock',
   authMiddleware,
-  roleCheck,
+  checkPrivilege([PRIVILEGES.LOCK_UNLOCK_USER]),
   userIdValidation,
   validationMiddleware,
   unlockUser
