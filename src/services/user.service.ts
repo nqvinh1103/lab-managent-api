@@ -1,20 +1,40 @@
 import bcrypt from 'bcryptjs';
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UpdateUserInput, UserDocument } from '../models/User';
+import { CreateUserRoleInput, UserRoleDocument } from '../models/UserRole';
 import { OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
 
 export class UserService {
   private collection = getCollection<UserDocument>('users');
+  private roleCollection = getCollection<RoleDocument>('roles');
+  private userRoleCollection = getCollection<UserRoleDocument>('user_roles');
+
+  private async getDefaultRole(): Promise<ObjectId | null> {
+    const role = await this.roleCollection.findOne({ role_code: 'PATIENT' });
+    return role?._id || null;
+  }
 
   async create(userData: CreateUserInput): Promise<QueryResult<UserDocument>> {
     try {
+      // Get PATIENT role as default
+      const patientRoleId = await this.getDefaultRole();
+      
+      if (!patientRoleId) {
+        return {
+          success: false,
+          error: 'PATIENT role not found in system'
+        };
+      }
+
       // Hash password before saving
       const hashedPassword = await bcrypt.hash(userData.password_hash, 12);
       
       const userToInsert: Omit<UserDocument, '_id'> = {
         ...userData,
         password_hash: hashedPassword,
+        role_ids: [patientRoleId],
         last_activity: new Date(),
         created_at: new Date(),
         updated_at: new Date()
@@ -23,6 +43,17 @@ export class UserService {
       const result = await this.collection.insertOne(userToInsert as UserDocument);
       
       if (result.insertedId) {
+        // Create record in user_roles collection
+        const userRoleData: CreateUserRoleInput = {
+          user_id: result.insertedId,
+          role_id: patientRoleId,
+          created_by: userToInsert.created_by
+        };
+        await this.userRoleCollection.insertOne({
+          ...userRoleData,
+          created_at: new Date()
+        } as UserRoleDocument);
+
         const createdUser = await this.collection.findOne({ _id: result.insertedId });
         return {
           success: true,
@@ -220,12 +251,36 @@ export class UserService {
         };
       }
 
+      // Check if user exists
+      const user = await this.collection.findOne({ _id: userObjectId });
+      if (!user) {
+        return {
+          success: false,
+          error: 'User not found'
+        };
+      }
+
+      // Update role_ids in users collection
       const result = await this.collection.updateOne(
         { _id: userObjectId },
         { 
           $addToSet: { role_ids: roleObjectId },
           $set: { updated_at: new Date() }
         }
+      );
+
+      // Create record in user_roles collection if not exists
+      await this.userRoleCollection.updateOne(
+        { user_id: userObjectId, role_id: roleObjectId },
+        { 
+          $set: { 
+            user_id: userObjectId, 
+            role_id: roleObjectId,
+            created_at: new Date(),
+            created_by: user.created_by
+          }
+        },
+        { upsert: true }
       );
 
       return {
@@ -252,6 +307,7 @@ export class UserService {
         };
       }
 
+      // Update role_ids in users collection
       const result = await this.collection.updateOne(
         { _id: userObjectId },
         { 
@@ -259,6 +315,12 @@ export class UserService {
           $set: { updated_at: new Date() }
         }
       );
+
+      // Delete record from user_roles collection
+      await this.userRoleCollection.deleteOne({
+        user_id: userObjectId,
+        role_id: roleObjectId
+      });
 
       return {
         success: true,

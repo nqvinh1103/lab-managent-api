@@ -31,9 +31,6 @@ export const createUserValidation = [
   body('is_locked')
     .optional()
     .isBoolean().withMessage('is_locked must be boolean'),
-  body('role_ids')
-    .optional()
-    .isArray().withMessage('role_ids must be an array'),
   body('created_by')
     .notEmpty().withMessage('created_by is required'),
   body('updated_by')
