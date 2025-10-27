@@ -31,10 +31,6 @@ export const createUserValidation = [
   body('is_locked')
     .optional()
     .isBoolean().withMessage('is_locked must be boolean'),
-  body('created_by')
-    .notEmpty().withMessage('created_by is required'),
-  body('updated_by')
-    .notEmpty().withMessage('updated_by is required')
 ];
 
 export const updateUserValidation = [
@@ -68,8 +64,6 @@ export const updateUserValidation = [
   body('is_locked')
     .optional()
     .isBoolean().withMessage('is_locked must be boolean'),
-  body('updated_by')
-    .notEmpty().withMessage('updated_by is required')
 ];
 
 export const userIdValidation = [

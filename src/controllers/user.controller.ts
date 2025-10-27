@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { ObjectId } from 'mongodb';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { UserService } from '../services/user.service';
@@ -14,7 +15,11 @@ const getUserService = () => {
 // Create user
 export const createUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = await getUserService().create(req.body);
+    const userData = {
+      ...req.body,
+      created_by: req.user?.id ? new ObjectId(req.user.id) : undefined,
+    };
+    const result = await getUserService().create(userData);
 
     if (!result.success) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -112,12 +117,16 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
 export const updateUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const result = await getUserService().findByIdAndUpdate(id, req.body);
+    const updateData = {
+      ...req.body,
+      updated_by: req.user?.id ? new ObjectId(req.user.id) : undefined
+    };
+    const result = await getUserService().findByIdAndUpdate(id, updateData);
 
     if (!result.success) {
       res.status(HTTP_STATUS.NOT_FOUND).json({
         success: false,
-        message: MESSAGES.DB_UPDATE_ERROR,
+        message: MESSAGES.DB_UPDATE_ERROR,  
         error: result.error
       });
       return;
@@ -171,8 +180,9 @@ export const assignRole = async (req: Request, res: Response): Promise<void> => 
   try {
     const { id } = req.params;
     const { roleId } = req.body;
+    const createdBy = req.user?.id ? new ObjectId(req.user.id) : undefined;
 
-    const result = await getUserService().assignRole(id, roleId);
+    const result = await getUserService().assignRole(id, roleId, createdBy);
 
     if (!result.success) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({

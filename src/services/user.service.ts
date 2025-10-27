@@ -12,7 +12,7 @@ export class UserService {
   private userRoleCollection = getCollection<UserRoleDocument>('user_roles');
 
   private async getDefaultRole(): Promise<ObjectId | null> {
-    const role = await this.roleCollection.findOne({ role_code: 'PATIENT' });
+    const role = await this.roleCollection.findOne({ role_code: 'NORMAL_USER' });
     return role?._id || null;
   }
 
@@ -24,7 +24,7 @@ export class UserService {
       if (!patientRoleId) {
         return {
           success: false,
-          error: 'PATIENT role not found in system'
+          error: 'NORMAL_USER role not found in system'
         };
       }
 
@@ -239,7 +239,7 @@ export class UserService {
     }
   }
 
-  async assignRole(userId: string | ObjectId, roleId: string | ObjectId): Promise<OperationResult> {
+  async assignRole(userId: string | ObjectId, roleId: string | ObjectId, createdBy?: string | ObjectId): Promise<OperationResult> {
     try {
       const userObjectId = toObjectId(userId);
       const roleObjectId = toObjectId(roleId);
@@ -269,6 +269,9 @@ export class UserService {
         }
       );
 
+      // Get created_by from parameter or use current user
+      const createdByObjectId = createdBy ? toObjectId(createdBy) : userObjectId;
+
       // Create record in user_roles collection if not exists
       await this.userRoleCollection.updateOne(
         { user_id: userObjectId, role_id: roleObjectId },
@@ -277,7 +280,7 @@ export class UserService {
             user_id: userObjectId, 
             role_id: roleObjectId,
             created_at: new Date(),
-            created_by: user.created_by
+            created_by: createdByObjectId || user.created_by
           }
         },
         { upsert: true }
