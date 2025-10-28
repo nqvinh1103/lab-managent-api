@@ -9,6 +9,7 @@ export interface IPatient {
   address?: string;
   phone_number?: string;
   email?: string;
+  user_id?: ObjectId;
   deleted_at?: Date;
   created_at: Date;
   created_by: ObjectId;
@@ -24,3 +25,4 @@ export type PatientDocument = IPatient & {
 
 export type CreatePatientInput = Omit<IPatient, '_id' | 'created_at' | 'updated_at'>;
 export type UpdatePatientInput = Partial<Omit<IPatient, '_id' | 'created_at' | 'updated_at'>>;
+ 
