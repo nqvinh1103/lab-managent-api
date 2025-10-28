@@ -99,6 +99,13 @@
  *         is_locked:
  *           type: boolean
  *           example: false
+ *         role_ids:
+ *           type: array
+ *           items:
+ *             type: string
+ *             pattern: ^[a-f\d]{24}$
+ *           description: Optional array of role IDs to assign to user
+ *           example: ["507f1f77bcf86cd799439011"]
  *     
  *     UpdateUserRequest:
  *       type: object

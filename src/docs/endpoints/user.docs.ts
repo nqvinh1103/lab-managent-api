@@ -3,7 +3,7 @@
  * /users:
  *   post:
  *     summary: Create a new user
- *     description: Create a new user account. Newly created users are automatically assigned the PATIENT role. **Required Privilege:** CREATE_USER
+ *     description: Create a new user account. Roles can be optionally assigned during creation or later via the assign role endpoint. **Required Privilege:** CREATE_USER
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -23,6 +23,7 @@
  *             date_of_birth: "1990-01-01"
  *             address: "123 Main Street"
  *             is_locked: false
+ *             role_ids: ["507f1f77bcf86cd799439011"]
  *     responses:
  *       201:
  *         description: User created successfully
@@ -258,6 +259,7 @@
  *                 phone_number: "+84123456791"
  *                 address: "456 New Street"
  *                 is_locked: false
+ *                 role_ids: ["507f1f77bcf86cd799439011"]
  *       400:
  *         description: Bad request - Validation error
  *         content:
