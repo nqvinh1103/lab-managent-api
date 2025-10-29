@@ -3,6 +3,7 @@ import authRoutes from './modules/auth.route'
 import roleRoutes from './modules/role.route'
 import userRoutes from './modules/user.route'
 import privilegeRoutes from './modules/privilege.route'
+import testOrderRoutes from './modules/testOrder.route'
 
 const router = Router()
 
@@ -17,5 +18,8 @@ router.use('/roles', roleRoutes)
 
 // Privilege management routes
 router.use('/privileges', privilegeRoutes)
+
+// Test order routes
+router.use('/test-orders', testOrderRoutes)
 
 export default router

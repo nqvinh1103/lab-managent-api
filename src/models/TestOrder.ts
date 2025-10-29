@@ -18,22 +18,21 @@ export interface ITestComment {
   updated_at: Date;
   updated_by: ObjectId;
 }
-
 export interface ITestOrder {
-  _id?: ObjectId;
+  _id?: ObjectId;          // MongoDB tự sinh
   order_number: string;
   patient_id: ObjectId;
+  instrument_id?: ObjectId;
   barcode?: string;
   status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
-  instrument_id?: ObjectId;
-  test_results: ITestResult[];
-  comments: ITestComment[];
-  run_by?: ObjectId;
-  run_at?: Date;
-  created_at: Date;
-  created_by: ObjectId;
-  updated_at: Date;
-  updated_by: ObjectId;
+  test_results: any[];
+  comments: any[];
+  run_by?: ObjectId;       // chỉ set khi order được chạy
+  run_at?: Date;           // chỉ set khi order được chạy
+  created_at: Date;        // tạo lần đầu
+  created_by: ObjectId;    // tạo lần đầu
+  updated_at: Date;        // cập nhật mỗi lần update
+  updated_by: ObjectId;    // cập nhật mỗi lần update
 }
 
 export type TestOrderDocument = ITestOrder & {
@@ -42,7 +41,11 @@ export type TestOrderDocument = ITestOrder & {
   updated_at: Date;
 };
 
-export type CreateTestOrderInput = Omit<ITestOrder, '_id' | 'created_at' | 'updated_at' | 'test_results' | 'comments'>;
+export interface CreateTestOrderInput {
+  patient_id: ObjectId;
+  instrument_id?: ObjectId;
+}
+
 export type UpdateTestOrderInput = Partial<Omit<ITestOrder, '_id' | 'created_at' | 'updated_at' | 'test_results' | 'comments'>>;
 
 export type AddTestResultInput = Omit<ITestResult, 'measured_at'>;

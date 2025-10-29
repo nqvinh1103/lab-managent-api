@@ -58,8 +58,11 @@ const options: swaggerJsdoc.Options = {
   apis: [
     './src/docs/index.ts',  // Aggregator file that imports all schemas and endpoints
     './src/docs/schemas/**/*.ts',
-    './src/docs/endpoints/**/*.ts'
-  ]
+    './src/docs/endpoints/**/*.ts',
+    // Scan controllers and routes for JSDoc OpenAPI comments
+    './src/controllers/**/*.ts',
+    './src/routes/**/*.ts'
+  ] 
 };
 
 export const swaggerSpec = swaggerJsdoc(options);
