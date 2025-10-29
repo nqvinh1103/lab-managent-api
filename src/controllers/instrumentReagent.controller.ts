@@ -6,11 +6,17 @@ import {
   updateInstrumentReagent,
   deleteInstrumentReagent
 } from '../services/instrumentReagent.service';
-
+import { ObjectId } from 'mongodb';
 
 /**
  * @openapi
  * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *
  *   schemas:
  *     InstrumentReagent:
  *       type: object
@@ -19,8 +25,6 @@ import {
  *         - reagent_lot_number
  *         - installed_at
  *         - installed_by
- *         - status
- *         - created_by
  *       properties:
  *         _id:
  *           type: string
@@ -30,24 +34,31 @@ import {
  *           description: ID of the instrument
  *         reagent_lot_number:
  *           type: string
+ *           description: Reagent lot number
  *         installed_at:
  *           type: string
  *           format: date-time
+ *           description: Time the reagent was installed
  *         installed_by:
  *           type: string
+ *           description: ID of the staff who installed it
  *         removed_at:
  *           type: string
  *           format: date-time
+ *           description: Time the reagent was removed
  *         removed_by:
  *           type: string
+ *           description: ID of the staff who removed it
  *         status:
  *           type: string
  *           enum: [active, removed, expired]
+ *           default: active
+ *         created_by:
+ *           type: string
+ *           description: ID of the user who created this record
  *         created_at:
  *           type: string
  *           format: date-time
- *         created_by:
- *           type: string
  *       example:
  *         _id: "64f9e2c2b1a5d4f6e8c12345"
  *         instrument_id: "64f9e2c2b1a5d4f6e8c11111"
@@ -55,23 +66,28 @@ import {
  *         installed_at: "2025-10-29T12:00:00.000Z"
  *         installed_by: "64f9e2c2b1a5d4f6e8c22222"
  *         status: "active"
- *         created_at: "2025-10-29T12:00:00.000Z"
  *         created_by: "64f9e2c2b1a5d4f6e8c33333"
- */
-
-/**
- * @openapi
+ *         created_at: "2025-10-29T12:00:00.000Z"
+ *
  * /instrument-reagents:
  *   post:
  *     tags:
  *       - InstrumentReagents
  *     summary: Create a new instrument reagent
+ *     security:
+ *       - bearerAuth: []
+ *     description: Create a reagent installation record for an instrument. The authenticated user will be set as `created_by`.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/InstrumentReagent'
+ *           example:
+ *             instrument_id: "64f9e2c2b1a5d4f6e8c11111"
+ *             reagent_lot_number: "LOT123"
+ *             installed_at: "2025-10-29T12:00:00.000Z"
+ *             installed_by: "64f9e2c2b1a5d4f6e8c22222"
  *     responses:
  *       201:
  *         description: Created successfully
@@ -84,16 +100,30 @@ import {
  *                   type: boolean
  *                 data:
  *                   $ref: '#/components/schemas/InstrumentReagent'
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               error: User not authenticated
  *       500:
- *         description: Failed to create
+ *         description: Failed to create reagent
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               error: Failed to create instrument reagent
  *
  *   get:
  *     tags:
  *       - InstrumentReagents
  *     summary: Get all instrument reagents
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: OK
+ *         description: List of all instrument reagents
  *         content:
  *           application/json:
  *             schema:
@@ -106,40 +136,41 @@ import {
  *                   items:
  *                     $ref: '#/components/schemas/InstrumentReagent'
  *       500:
- *         description: Failed to fetch
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               error: Failed to fetch instrument reagents
  *
  * /instrument-reagents/{id}:
  *   get:
  *     tags:
  *       - InstrumentReagents
- *     summary: Get an instrument reagent by id
+ *     summary: Get an instrument reagent by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *           example: "64f9e2c2b1a5d4f6e8c12345"
  *     responses:
  *       200:
- *         description: OK
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   $ref: '#/components/schemas/InstrumentReagent'
+ *         description: Instrument reagent found
  *       400:
- *         description: Invalid ID
+ *         description: Invalid ObjectId format
  *       404:
- *         description: Not found
+ *         description: Reagent not found
  *
  *   put:
  *     tags:
  *       - InstrumentReagents
- *     summary: Update an instrument reagent
+ *     summary: Update an instrument reagent by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -155,24 +186,15 @@ import {
  *     responses:
  *       200:
  *         description: Updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   $ref: '#/components/schemas/InstrumentReagent'
- *       400:
- *         description: Invalid ID
  *       404:
  *         description: Not found
  *
  *   delete:
  *     tags:
  *       - InstrumentReagents
- *     summary: Delete an instrument reagent
+ *     summary: Delete an instrument reagent by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -182,30 +204,27 @@ import {
  *     responses:
  *       200:
  *         description: Deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *       400:
- *         description: Invalid ID
  *       404:
- *         description: Not found
+ *         description: Reagent not found
  */
-
 
 export const createReagentController = async (req: Request, res: Response) => {
   try {
-    const data = req.body;
-    const created = await createInstrumentReagent(data);
-    res.status(201).json({ success: true, data: created });
+    const user = (req as any).user;
+    console.log('Authenticated user:', user);
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'User not authenticated' });
+    }
+
+    const userId = new ObjectId(user.id);
+    const reagentData = req.body;
+    reagentData.created_by = userId;
+
+    const result = await createInstrumentReagent(reagentData);
+    res.status(201).json({ success: true, data: result });
   } catch (error: any) {
     console.error(error);
-    res.status(500).json({ success: false, error: error.message || 'Server error' });
+    res.status(500).json({ success: false, error: 'Failed to create instrument reagent' });
   }
 };
 
@@ -215,7 +234,7 @@ export const getReagentsController = async (_req: Request, res: Response) => {
     res.json({ success: true, data: items });
   } catch (error: any) {
     console.error(error);
-    res.status(500).json({ success: false, error: error.message || 'Server error' });
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 };
 
