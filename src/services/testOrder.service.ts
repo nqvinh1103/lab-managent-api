@@ -18,7 +18,7 @@ export const createTestOrder = async (
 
   // ✅ Generate unique order number
   const orderNumber = `ORD-${Date.now()}`;
-
+  const barcode = `BC-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   // Normalize createdBy to an ObjectId
   const createdById = createdBy instanceof ObjectId ? createdBy : new ObjectId(String(createdBy));
 
@@ -27,8 +27,8 @@ export const createTestOrder = async (
     order_number: orderNumber,
     patient_id: new ObjectId(input.patient_id),
     instrument_id: input.instrument_id ? new ObjectId(input.instrument_id) : undefined,
-    barcode: input.barcode,
-    status: input.status ?? "pending",
+    barcode: barcode,
+    status: "pending",
     test_results: [],
     comments: [],
     run_by: undefined,
