@@ -8,14 +8,13 @@ import {
   deleteTestOrder
 } from '../services/testOrder.service';
 import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder';
-
 /**
  * @openapi
  * /test-orders:
  *   post:
  *     tags:
  *       - TestOrders
- *     summary: Create a test order
+ *     summary: Create a new test order
  *     requestBody:
  *       required: true
  *       content:
@@ -25,15 +24,37 @@ import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder'
  *             properties:
  *               patient_id:
  *                 type: string
+ *                 description: ID of the patient
  *               instrument_id:
  *                 type: string
- *               barcode:
- *                 type: string
- *               status:
- *                 type: string
+ *                 description: ID of the instrument
+ *             required:
+ *               - patient_id
+ *               - instrument_id
  *     responses:
  *       '201':
- *         description: Created
+ *         description: Created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   description: The created test order
+ *       '500':
+ *         description: Failed to create test order
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: string
  */
 export const createOrder = async (req: Request, res: Response) => {
   try {
@@ -43,6 +64,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const orderData: CreateTestOrderInput = req.body;
     const result = await createTestOrder(orderData, userId ?? new ObjectId());
+    console.log('Order created:', result);
 
     res.status(201).json({ success: true, data: result });
   } catch (error) {
