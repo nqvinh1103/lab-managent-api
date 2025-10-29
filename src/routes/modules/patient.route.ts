@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { PRIVILEGES } from '../../constants/privileges';
 import {
   createPatient,
   deletePatient,
@@ -8,22 +9,21 @@ import {
   updatePatient
 } from '../../controllers/patient.controller';
 import { authMiddleware, checkPrivilege } from '../../middlewares/auth.middleware';
-import { PRIVILEGES } from '../../constants/privileges';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
 import {
   createPatientValidation,
-  patientIdValidation,
   listPatientsValidation,
+  patientIdValidation,
   updatePatientValidation
 } from '../../middlewares/validations/patient.validation';
 
 const router = Router();
 
-// Admin routes (require MANAGE_PATIENT privilege)
+// Admin routes (require User Management privileges)
 router.post(
   '/',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.CREATE_TEST_ORDER]),
+  checkPrivilege([PRIVILEGES.CREATE_USER]),
   createPatientValidation,
   validationMiddleware,
   createPatient
@@ -32,16 +32,24 @@ router.post(
 router.get(
   '/',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.READ_ONLY]),
+  checkPrivilege([PRIVILEGES.VIEW_USER, PRIVILEGES.READ_ONLY]),
   listPatientsValidation,
   validationMiddleware,
   listPatients
 );
 
+// Patient portal routes (require authentication only, no privilege check)
+// IMPORTANT: This must be before /:id route to avoid matching "me" as an id
+router.get(
+  '/me',
+  authMiddleware,
+  getMyProfile
+);
+
 router.get(
   '/:id',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.READ_ONLY]),
+  checkPrivilege([PRIVILEGES.VIEW_USER, PRIVILEGES.READ_ONLY]),
   patientIdValidation,
   validationMiddleware,
   getPatient
@@ -50,7 +58,7 @@ router.get(
 router.put(
   '/:id',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.MODIFY_TEST_ORDER]),
+  checkPrivilege([PRIVILEGES.MODIFY_USER]),
   updatePatientValidation,
   validationMiddleware,
   updatePatient
@@ -59,17 +67,10 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.DELETE_TEST_ORDER]),
+  checkPrivilege([PRIVILEGES.DELETE_USER]),
   patientIdValidation,
   validationMiddleware,
   deletePatient
-);
-
-// Patient portal routes (require authentication)
-router.get(
-  '/me',
-  authMiddleware,
-  getMyProfile
 );
 
 export default router;

@@ -96,13 +96,20 @@
  *           example: true
  *         message:
  *           type: string
- *           example: Patient created successfully
+ *           example: Patient created successfully. Login credentials have been sent to patient email.
  *         data:
  *           $ref: '#/components/schemas/Patient'
- *         temporaryPassword:
- *           type: string
- *           example: Abc@123456
- *           description: Auto-generated password. Should be sent to patient via email.
+ *         emailStatus:
+ *           type: object
+ *           properties:
+ *             sent:
+ *               type: boolean
+ *               example: true
+ *               description: Whether email was sent successfully
+ *             error:
+ *               type: string
+ *               example: Email configuration not set
+ *               description: Error message if email failed (only present when sent is false)
  *     
  *     UpdatePatientRequest:
  *       type: object

@@ -110,3 +110,46 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const changePassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Get authenticated user from middleware
+    if (!req.user) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'User not authenticated'
+      });
+      return;
+    }
+
+    const { newPassword } = req.body;
+    const userId = req.user.id;
+
+    // Call auth service
+    const result = await authService.changePassword(userId, newPassword);
+
+    if (!result.success) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: 'Failed to change password',
+        error: result.error
+      });
+      return;
+    }
+
+    // Return success response
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Password changed successfully. Please login with your new password.'
+    });
+
+  } catch (error) {
+    console.error('Change password controller error:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: MESSAGES.INTERNAL_ERROR,
+      error: error instanceof Error ? error.message : 'Failed to change password'
+    });
+  }
+};
+

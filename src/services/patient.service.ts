@@ -2,15 +2,18 @@ import bcrypt from 'bcryptjs';
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
 import { MESSAGES } from '../constants/messages';
-import { CreatePatientInput, IPatient, PatientDocument, UpdatePatientInput } from '../models/Patient';
+import { CreatePatientInput, PatientDocument, UpdatePatientInput } from '../models/Patient';
 import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UserDocument } from '../models/User';
 import { UserRoleDocument } from '../models/UserRole';
 import { createPaginationOptions, QueryResult, toObjectId } from '../utils/database.helper';
 import { generatePassword } from '../utils/passwordGenerator';
+import { EmailService } from './email.service';
 
 export interface CreatePatientResult extends PatientDocument {
   temporaryPassword: string;
+  emailSent: boolean;
+  emailError?: string;
 }
 
 export class PatientService {
@@ -18,7 +21,7 @@ export class PatientService {
   private userCollection = getCollection<UserDocument>('users');
   private roleCollection = getCollection<RoleDocument>('roles');
   private userRoleCollection = getCollection<UserRoleDocument>('user_roles');
-
+  private emailService = new EmailService();
   /**
    * Get NORMAL_USER role ID
    */
@@ -148,11 +151,21 @@ export class PatientService {
 
       const createdPatient = await this.collection.findOne({ _id: patientResult.insertedId });
 
+      const emailResult = await this.emailService.sendPatientCredentials(patientData.email.toLowerCase(), patientData.full_name, temporaryPassword);
+
+      // Log email result
+      if (emailResult.success) {
+        console.log(`✅ Credentials email sent to ${patientData.email}`);
+      } else {
+        console.warn(`⚠️ Failed to send credentials email to ${patientData.email}:`, emailResult.error);
+      }
       return {
         success: true,
         data: {
           ...createdPatient!,
-          temporaryPassword
+          temporaryPassword,
+          emailSent: emailResult.success,
+          emailError: emailResult.error
         }
       };
 
