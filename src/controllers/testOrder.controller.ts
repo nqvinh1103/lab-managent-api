@@ -19,18 +19,59 @@ import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder'
  *       bearerFormat: JWT
  *
  *   schemas:
+ *     Patient:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: Unique identifier for the patient
+ *         full_name:
+ *           type: string
+ *           description: Full name of the patient
+ *         identity_number:
+ *           type: string
+ *           description: Identity number of the patient
+ *         date_of_birth:
+ *           type: string
+ *           format: date-time
+ *           description: Date of birth
+ *         gender:
+ *           type: string
+ *           enum: [male, female]
+ *           description: Gender of the patient
+ *         address:
+ *           type: string
+ *           description: Address of the patient
+ *         phone_number:
+ *           type: string
+ *           description: Phone number of the patient
+ *         email:
+ *           type: string
+ *           description: Email of the patient
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           description: Creation timestamp
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *           description: Last update timestamp
  *     TestOrder:
  *       type: object
  *       required:
- *         - patient_id
  *         - instrument_id
  *       properties:
  *         _id:
  *           type: string
  *           description: Unique identifier for the test order
- *         patient_id:
+ *         order_number:
  *           type: string
- *           description: ID of the patient
+ *           description: Order number
+ *         patient:
+ *           oneOf:
+ *             - $ref: '#/components/schemas/Patient'
+ *             - type: "null"
+ *           description: Patient information (null if patient not found or deleted)
  *         instrument_id:
  *           type: string
  *           description: ID of the instrument
@@ -39,8 +80,25 @@ import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder'
  *           description: Generated barcode for the order
  *         status:
  *           type: string
- *           enum: [pending, completed, cancelled]
+ *           enum: [pending, running, completed, cancelled, failed]
  *           default: pending
+ *         test_results:
+ *           type: array
+ *           items:
+ *             type: object
+ *           description: Test results array
+ *         comments:
+ *           type: array
+ *           items:
+ *             type: object
+ *           description: Comments array
+ *         run_by:
+ *           type: string
+ *           description: ID of the user who ran this order
+ *         run_at:
+ *           type: string
+ *           format: date-time
+ *           description: When the order was run
  *         created_by:
  *           type: string
  *           description: ID of the user who created this order
@@ -54,10 +112,21 @@ import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder'
  *           description: Last update timestamp
  *       example:
  *         _id: "671f8a36e9e9f84ef4a12345"
- *         patient_id: "671f8a36e9e9f84ef4a22222"
+ *         order_number: "ORD-1729933200000"
+ *         patient:
+ *           _id: "671f8a36e9e9f84ef4a22222"
+ *           full_name: "Nguyen Van A"
+ *           identity_number: "123456789"
+ *           date_of_birth: "1990-01-01T00:00:00.000Z"
+ *           gender: "male"
+ *           address: "123 Main St"
+ *           phone_number: "0123456789"
+ *           email: "patient@example.com"
  *         instrument_id: "671f8a36e9e9f84ef4a33333"
- *         barcode: "BAR-1729933200000-100"
+ *         barcode: "BC-ABC123XYZ"
  *         status: "pending"
+ *         test_results: []
+ *         comments: []
  *         created_by: "671f8a36e9e9f84ef4a44444"
  *         created_at: "2025-10-29T12:00:00.000Z"
  *         updated_at: "2025-10-29T12:00:00.000Z"
@@ -82,6 +151,9 @@ import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder'
  *           example:
  *             patient_email: "nguyevana@email.com"
  *             instrument_id: "671f8a36e9e9f84ef4a33333"
+ *           note: |
+ *             Note: When creating a test order, use patient_id.
+ *             The API response will include the full patient object instead of patient_id.
  *     responses:
  *       201:
  *         description: Created successfully

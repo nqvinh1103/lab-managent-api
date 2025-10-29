@@ -35,13 +35,23 @@ export const createPatient = async (req: Request, res: Response): Promise<void> 
 
     // Return patient data with temporary password
     // TODO: Send email with credentials instead of returning in response
-    const { temporaryPassword, ...patientInfo } = result.data!;
+    const { temporaryPassword, emailSent, emailError, ...patientInfo } = result.data!;
+
+    let message = 'Patient created successfully';
+    if (!emailSent) {
+      message += 'Login credentials will be sent via email';
+    } else {
+      message += 'Warning: Failed to send credentials email';
+    }
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
       message: 'Patient created successfully',
       data: patientInfo,
-      temporaryPassword // This should be sent via email in production
+      emailStatus: {
+        sent: emailSent,
+        ...(emailError && { error: emailError })
+      }
     });
   } catch (error) {
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
