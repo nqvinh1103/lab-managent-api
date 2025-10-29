@@ -222,5 +222,75 @@ export class AuthService {
       };
     }
   }
+
+  /**
+   * Change user password (without requiring old password)
+   * Used for patient password reset
+   */
+  async changePassword(userId: string, newPassword: string): Promise<QueryResult<boolean>> {
+    try {
+      const objectId = toObjectId(userId);
+      
+      if (!objectId) {
+        return {
+          success: false,
+          error: 'Invalid user ID'
+        };
+      }
+
+      // Find user
+      const user = await this.getUserCollection().findOne({ _id: objectId });
+
+      if (!user) {
+        return {
+          success: false,
+          error: MESSAGES.USER_NOT_FOUND
+        };
+      }
+
+      // Check if account is locked
+      if (user.is_locked) {
+        return {
+          success: false,
+          error: MESSAGES.USER_LOCKED
+        };
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      // Update password
+      const result = await this.getUserCollection().updateOne(
+        { _id: objectId },
+        { 
+          $set: { 
+            password_hash: hashedPassword,
+            updated_at: new Date()
+          } 
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return {
+          success: false,
+          error: 'Failed to update password'
+        };
+      }
+
+      console.log(`✅ Password changed successfully for user: ${user.email}`);
+
+      return {
+        success: true,
+        data: true
+      };
+
+    } catch (error) {
+      console.error('Change password error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to change password'
+      };
+    }
+  }
 }
 

@@ -143,3 +143,84 @@
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 
+/**
+ * @swagger
+ * /auth/change-password:
+ *   put:
+ *     summary: Change user password
+ *     description: Change the password for the authenticated user without requiring old password
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - newPassword
+ *             properties:
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 8
+ *                 example: "NewPass123"
+ *                 description: Must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Password changed successfully. Please login with your new password."
+ *             example:
+ *               success: true
+ *               message: "Password changed successfully. Please login with your new password."
+ *       400:
+ *         description: Validation error or failed to change password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               validation_error:
+ *                 summary: Validation error
+ *                 value:
+ *                   success: false
+ *                   message: "Validation error"
+ *                   errors:
+ *                     - msg: "Password must be at least 8 characters long"
+ *                       param: "newPassword"
+ *               weak_password:
+ *                 summary: Weak password
+ *                 value:
+ *                   success: false
+ *                   message: "Validation error"
+ *                   errors:
+ *                     - msg: "Password must contain at least one uppercase letter"
+ *                       param: "newPassword"
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "Unauthorized"
+ *               error: "User not authenticated"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+
