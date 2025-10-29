@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
 import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UpdateUserInput, UserDocument } from '../models/User';
-import { CreateUserRoleInput, UserRoleDocument } from '../models/UserRole';
+import { UserRoleDocument } from '../models/UserRole';
 import { OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
 
 export class UserService {
@@ -18,14 +18,30 @@ export class UserService {
 
   async create(userData: CreateUserInput): Promise<QueryResult<UserDocument>> {
     try {
-      // Get PATIENT role as default
-      const patientRoleId = await this.getDefaultRole();
-      
-      if (!patientRoleId) {
-        return {
-          success: false,
-          error: 'NORMAL_USER role not found in system'
-        };
+      // Validate roles if provided
+      const roleIds: ObjectId[] = []
+      if (userData.role_ids && userData.role_ids.length > 0) {
+        // Convert string IDs to ObjectIds and validate
+        for (const roleId of userData.role_ids) {
+          const objectId = toObjectId(roleId);
+          if (!objectId) {
+            return {
+              success: false,
+              error: `Invalid role ID: ${roleId}`
+            };
+          }
+          
+          // Check if role exists
+          const roleExists = await this.roleCollection.findOne({ _id: objectId });
+          if (!roleExists) {
+            return {
+              success: false,
+              error: `Role not found: ${roleId}`
+            };
+          }
+          
+          roleIds.push(objectId);
+        }
       }
 
       // Hash password before saving
@@ -34,7 +50,7 @@ export class UserService {
       const userToInsert: Omit<UserDocument, '_id'> = {
         ...userData,
         password_hash: hashedPassword,
-        role_ids: [patientRoleId],
+        role_ids: roleIds,
         last_activity: new Date(),
         created_at: new Date(),
         updated_at: new Date()
@@ -44,17 +60,18 @@ export class UserService {
       
       if (result.insertedId) {
         // Create record in user_roles collection
-        const userRoleData: CreateUserRoleInput = {
-          user_id: result.insertedId,
-          role_id: patientRoleId,
-          created_by: userToInsert.created_by
-        };
-        await this.userRoleCollection.insertOne({
-          ...userRoleData,
-          created_at: new Date()
-        } as UserRoleDocument);
+        if (roleIds.length > 0) {
+          const userRoleDocs = roleIds.map(roleId => ({
+            user_id: result.insertedId,
+            role_id: roleId,
+            created_by: userToInsert.created_by,
+            created_at: new Date()
+          }));
+          await this.userRoleCollection.insertMany(userRoleDocs as UserRoleDocument[]);
+        }
+      
 
-        const createdUser = await this.collection.findOne({ _id: result.insertedId });
+      const createdUser = await this.collection.findOne({ _id: result.insertedId });
         return {
           success: true,
           data: createdUser!

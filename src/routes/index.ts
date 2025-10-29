@@ -4,6 +4,7 @@ import roleRoutes from './modules/role.route'
 import userRoutes from './modules/user.route'
 import privilegeRoutes from './modules/privilege.route'
 import testOrderRoutes from './modules/testOrder.route'
+import patientRoutes from './modules/patient.route'
 
 const router = Router()
 
@@ -21,5 +22,7 @@ router.use('/privileges', privilegeRoutes)
 
 // Test order routes
 router.use('/test-orders', testOrderRoutes)
+// Patient management routes
+router.use('/patients', patientRoutes)
 
 export default router
