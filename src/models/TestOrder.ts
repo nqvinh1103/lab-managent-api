@@ -44,6 +44,7 @@ export type TestOrderDocument = ITestOrder & {
 export interface CreateTestOrderInput {
   patient_id: ObjectId;
   instrument_id?: ObjectId;
+  barcode?: string;
 }
 
 export type UpdateTestOrderInput = Partial<Omit<ITestOrder, '_id' | 'created_at' | 'updated_at' | 'test_results' | 'comments'>>;
