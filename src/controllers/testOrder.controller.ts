@@ -149,7 +149,7 @@ import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder'
  *           schema:
  *             $ref: '#/components/schemas/TestOrder'
  *           example:
- *             patient_id: "671f8a36e9e9f84ef4a22222"
+ *             patient_email: "nguyevana@email.com"
  *             instrument_id: "671f8a36e9e9f84ef4a33333"
  *           note: |
  *             Note: When creating a test order, use patient_id.
