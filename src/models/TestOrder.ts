@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { PatientDocument } from './Patient';
 
 export interface ITestResult {
   parameter_id: ObjectId;
@@ -51,3 +52,11 @@ export type UpdateTestOrderInput = Partial<Omit<ITestOrder, '_id' | 'created_at'
 
 export type AddTestResultInput = Omit<ITestResult, 'measured_at'>;
 export type AddTestCommentInput = Omit<ITestComment, 'created_at' | 'updated_at'>;
+
+/**
+ * Test Order with populated patient information
+ * patient_id is excluded from the response as it's replaced by the full patient object
+ */
+export type TestOrderWithPatient = Omit<TestOrderDocument, 'patient_id'> & {
+  patient: PatientDocument | null; // null if patient not found or deleted
+};

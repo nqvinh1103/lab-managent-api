@@ -3,6 +3,7 @@ import { getCollection } from "../config/database";
 import {
   ITestOrder,
   TestOrderDocument,
+  TestOrderWithPatient,
   CreateTestOrderInput,
   UpdateTestOrderInput,
 } from "../models/TestOrder";
@@ -52,18 +53,88 @@ export const createTestOrder = async (
   return inserted as TestOrderDocument;
 };
 
-export const getAllTestOrders = async (): Promise<TestOrderDocument[]> => {
+export const getAllTestOrders = async (): Promise<TestOrderWithPatient[]> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const items = await collection.find().toArray();
-  return items as TestOrderDocument[];
+  
+  const pipeline = [
+    // Lookup patient with pipeline to filter deleted patients
+    {
+      $lookup: {
+        from: 'patients',
+        let: { patientId: '$patient_id' },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ['$_id', '$$patientId'] },
+              deleted_at: { $exists: false }
+            }
+          }
+        ],
+        as: 'patient'
+      }
+    },
+    // Unwind patient array to object (or null if not found)
+    {
+      $unwind: {
+        path: '$patient',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    // Remove patient_id from response
+    {
+      $project: {
+        patient_id: 0
+      }
+    }
+  ];
+  
+  const items = await collection.aggregate<TestOrderWithPatient>(pipeline).toArray();
+  return items;
 }
 
-export const getTestOrderById = async (id: string): Promise<TestOrderDocument | null> => {
+export const getTestOrderById = async (id: string): Promise<TestOrderWithPatient | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   try {
     const _id = new ObjectId(id);
-    const doc = await collection.findOne({ _id });
-    return doc as TestOrderDocument | null;
+    
+    const pipeline = [
+      // Match the specific test order
+      {
+        $match: { _id }
+      },
+      // Lookup patient with pipeline to filter deleted patients
+      {
+        $lookup: {
+          from: 'patients',
+          let: { patientId: '$patient_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$patientId'] },
+                deleted_at: { $exists: false }
+              }
+            }
+          ],
+          as: 'patient'
+        }
+      },
+      // Unwind patient array to object (or null if not found)
+      {
+        $unwind: {
+          path: '$patient',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      // Remove patient_id from response
+      {
+        $project: {
+          patient_id: 0
+        }
+      }
+    ];
+    
+    const result = await collection.aggregate<TestOrderWithPatient>(pipeline).toArray();
+    return result[0] || null;
   } catch (err) {
     return null;
   }
