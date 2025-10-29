@@ -5,6 +5,8 @@ import userRoutes from './modules/user.route'
 import privilegeRoutes from './modules/privilege.route'
 import testOrderRoutes from './modules/testOrder.route'
 import patientRoutes from './modules/patient.route'
+import instrumentReagentRoutes from './modules/instrumentReagent.routes';
+
 
 const router = Router()
 
@@ -25,4 +27,6 @@ router.use('/test-orders', testOrderRoutes)
 // Patient management routes
 router.use('/patients', patientRoutes)
 
+// Instrument Reagent routes
+router.use('/instrument-reagents', instrumentReagentRoutes);
 export default router
