@@ -17,10 +17,21 @@ export interface LoginResult {
   token: string;
   user: {
     id: string;
+    username: string;
     email: string;
     full_name: string;
-    roles: string[];
-    privileges: string[];
+    privileges: ObjectId[] | undefined;
+    phone: string;
+    gender: string;
+    age: number;
+    address: string | undefined;
+    dob: Date;
+    identifyNumber: string;
+    isActive: boolean;
+    isLocked: boolean;
+    role: string | undefined;
+    roleId: string | undefined;
+    roleCode: string | undefined;
   };
 }
 
@@ -35,6 +46,8 @@ export class AuthService {
       const userResult = await this.getUserCollection().findOne({ 
         email: email.toLowerCase() 
       });
+
+      
 
       if (!userResult) {
         return {
@@ -121,6 +134,10 @@ export class AuthService {
         { $set: { last_activity: new Date() } }
       );
 
+      const userRole = await this.getRoleCollection().findOne({
+        _id: user.role_ids[0],
+      });
+
       // Step 8: Prepare response data
       const loginResult: LoginResult = {
         token,
@@ -128,8 +145,19 @@ export class AuthService {
           id: user._id.toString(),
           email: user.email,
           full_name: user.full_name,
-          roles: roleCodes,
-          privileges: privilegeCodes
+          role: userRole?.role_name,
+          roleId: userRole?._id.toString(),
+          roleCode: userRole?.role_code,
+          privileges: userRole?.privilege_ids,
+          username: user.email,
+          phone: user.phone_number,
+          gender: user.gender,
+          age: new Date().getFullYear() - new Date(user.date_of_birth).getFullYear(),
+          address: user.address,
+          dob: user.date_of_birth,
+          identifyNumber: user.identity_number,
+          isActive: true,
+          isLocked: user.is_locked,
         }
       };
 
