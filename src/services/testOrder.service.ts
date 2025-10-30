@@ -1,10 +1,10 @@
 import { ObjectId } from "mongodb";
 import { getCollection } from "../config/database";
 import {
+  CreateTestOrderInput,
   ITestOrder,
   TestOrderDocument,
   TestOrderWithPatient,
-  CreateTestOrderInput,
   UpdateTestOrderInput,
 } from "../models/TestOrder";
 
@@ -61,43 +61,7 @@ export const createTestOrder = async (
   return inserted as TestOrderDocument;
 };
 
-export const getAllTestOrders = async (): Promise<any[]> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
 
-  const items = await collection
-    .aggregate([
-      {
-        $lookup: {
-          from: "patients",              // Tên collection chứa thông tin bệnh nhân
-          localField: "patient_id",      // Field trong test_orders
-          foreignField: "_id",           // Field trong patients
-          as: "patient_info"             // Tên field mới chứa thông tin bệnh nhân
-        }
-      },
-      {
-        $unwind: {
-          path: "$patient_info",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $addFields: {
-          patient_email: "$patient_info.email" // Thêm field mới là email
-        }
-      },
-      {
-        $project: {
-          patient_info: 0, // Ẩn thông tin chi tiết bệnh nhân (chỉ giữ email)
-        }
-      }
-    ])
-    .toArray();
-
-  return items;
-};
-
-
-export const getTestOrderById = async (id: string): Promise<any | null> => {
 export const getAllTestOrders = async (): Promise<TestOrderWithPatient[]> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   
@@ -142,22 +106,6 @@ export const getTestOrderById = async (id: string): Promise<TestOrderWithPatient
 
   try {
     const _id = new ObjectId(id);
-    const result = await collection
-      .aggregate([
-        { $match: { _id } },
-        {
-          $lookup: {
-            from: "patients",
-            localField: "patient_id",
-            foreignField: "_id",
-            as: "patient_info"
-          }
-        },
-        { $unwind: { path: "$patient_info", preserveNullAndEmptyArrays: true } },
-        { $addFields: { patient_email: "$patient_info.email" } },
-        { $project: { patient_info: 0 } }
-      ])
-      .toArray();
 
     
     const pipeline = [

@@ -188,8 +188,16 @@ export const createOrder = async (req: Request, res: Response) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ success: false, error: 'User not authenticated' });
 
+     // ✅ Validate patient_email
+     if (!req.body.patient_email) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'patient_email is required' 
+      });
+    }
+
     const userId = new ObjectId(user.id);
-    const orderData: CreateTestOrderInput = req.body;
+    const orderData: CreateTestOrderInput & { patient_email: string } = req.body;
     const result = await createTestOrder(orderData, userId);
 
     // Log event
