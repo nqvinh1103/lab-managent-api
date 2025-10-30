@@ -7,6 +7,7 @@ import testOrderRoutes from './modules/testOrder.route'
 import patientRoutes from './modules/patient.route'
 import testResultRoutes from './modules/testResult.route';
 import instrumentReagentRoutes from './modules/instrumentReagent.route';
+import reagentUsageRoutes from './modules/reagentUsageHistory.route';
 
 
 const router = Router()
@@ -30,6 +31,9 @@ router.use('/patients', patientRoutes)
 
 // Instrument Reagent routes
 router.use('/instrument-reagents', instrumentReagentRoutes);
+
+// Reagent usage history routes
+router.use('/reagent-usage', reagentUsageRoutes);
 
 // TestResult routes
 router.use('/test-results', testResultRoutes);
