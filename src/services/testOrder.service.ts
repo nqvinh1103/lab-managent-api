@@ -1,10 +1,9 @@
 import { ObjectId } from "mongodb";
 import { getCollection } from "../config/database";
 import {
-  CreateTestOrderInput,
   ITestOrder,
   TestOrderDocument,
-  TestOrderWithPatient,
+  CreateTestOrderInput,
   UpdateTestOrderInput,
 } from "../models/TestOrder";
 
@@ -25,7 +24,19 @@ export const createTestOrder = async (
     throw new Error(`Patient with email "${input.patient_email}" not found`);
     
   }
-  console.log('Patient not found ---------------------' + input.patient_email);
+
+  // 🔍 Resolve instrument: prefer explicit instrument_id, otherwise try instrument_name
+  const instrumentCollection = getCollection<any>('instruments');
+  let resolvedInstrumentId: ObjectId | undefined;
+  if (input.instrument_id) {
+    resolvedInstrumentId = new ObjectId(String(input.instrument_id));
+  } else if (input.instrument_name) {
+    const instrument = await instrumentCollection.findOne({ instrument_name: input.instrument_name });
+    if (!instrument) {
+      throw new Error(`Instrument with name "${input.instrument_name}" not found`);
+    }
+    resolvedInstrumentId = instrument._id instanceof ObjectId ? instrument._id : new ObjectId(String(instrument._id));
+  }
 
   // ✅ 2. Generate order number & barcode
   const orderNumber = `ORD-${Date.now()}`;
@@ -38,7 +49,7 @@ export const createTestOrder = async (
   const newOrder: ITestOrder = {
     order_number: orderNumber,
     patient_id: new ObjectId(patient._id),  // 👈 gán id từ bệnh nhân tìm được
-    instrument_id: input.instrument_id ? new ObjectId(input.instrument_id) : undefined,
+  instrument_id: resolvedInstrumentId,
     barcode,
     status: "pending",
     test_results: [],
@@ -61,90 +72,64 @@ export const createTestOrder = async (
   return inserted as TestOrderDocument;
 };
 
-
-export const getAllTestOrders = async (): Promise<TestOrderWithPatient[]> => {
+export const getAllTestOrders = async (): Promise<any[]> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
-  
-  const pipeline = [
-    // Lookup patient with pipeline to filter deleted patients
-    {
-      $lookup: {
-        from: 'patients',
-        let: { patientId: '$patient_id' },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $eq: ['$_id', '$$patientId'] },
-              deleted_at: { $exists: false }
-            }
-          }
-        ],
-        as: 'patient'
-      }
-    },
-    // Unwind patient array to object (or null if not found)
-    {
-      $unwind: {
-        path: '$patient',
-        preserveNullAndEmptyArrays: true
-      }
-    },
-    // Remove patient_id from response
-    {
-      $project: {
-        patient_id: 0
-      }
-    }
-  ];
-  
-  const items = await collection.aggregate<TestOrderWithPatient>(pipeline).toArray();
-  return items;
-}
 
-export const getTestOrderById = async (id: string): Promise<TestOrderWithPatient | null> => {
+  const items = await collection
+    .aggregate([
+      {
+        $lookup: {
+          from: "patients",              // Tên collection chứa thông tin bệnh nhân
+          localField: "patient_id",      // Field trong test_orders
+          foreignField: "_id",           // Field trong patients
+          as: "patient_info"             // Tên field mới chứa thông tin bệnh nhân
+        }
+      },
+      {
+        $unwind: {
+          path: "$patient_info",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          patient_email: "$patient_info.email" // Thêm field mới là email
+        }
+      },
+      {
+        $project: {
+          patient_info: 0, // Ẩn thông tin chi tiết bệnh nhân (chỉ giữ email)
+        }
+      }
+    ])
+    .toArray();
+
+  return items;
+};
+
+
+export const getTestOrderById = async (id: string): Promise<any | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
 
   try {
     const _id = new ObjectId(id);
+    const result = await collection
+      .aggregate([
+        { $match: { _id } },
+        {
+          $lookup: {
+            from: "patients",
+            localField: "patient_id",
+            foreignField: "_id",
+            as: "patient_info"
+          }
+        },
+        { $unwind: { path: "$patient_info", preserveNullAndEmptyArrays: true } },
+        { $addFields: { patient_email: "$patient_info.email" } },
+        { $project: { patient_info: 0 } }
+      ])
+      .toArray();
 
-    
-    const pipeline = [
-      // Match the specific test order
-      {
-        $match: { _id }
-      },
-      // Lookup patient with pipeline to filter deleted patients
-      {
-        $lookup: {
-          from: 'patients',
-          let: { patientId: '$patient_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ['$_id', '$$patientId'] },
-                deleted_at: { $exists: false }
-              }
-            }
-          ],
-          as: 'patient'
-        }
-      },
-      // Unwind patient array to object (or null if not found)
-      {
-        $unwind: {
-          path: '$patient',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      // Remove patient_id from response
-      {
-        $project: {
-          patient_id: 0
-        }
-      }
-    ];
-    
-    const result = await collection.aggregate<TestOrderWithPatient>(pipeline).toArray();
     return result[0] || null;
   } catch (err) {
     return null;
