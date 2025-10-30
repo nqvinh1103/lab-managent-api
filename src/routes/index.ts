@@ -5,6 +5,7 @@ import userRoutes from './modules/user.route'
 import privilegeRoutes from './modules/privilege.route'
 import testOrderRoutes from './modules/testOrder.route'
 import patientRoutes from './modules/patient.route'
+import eventLogRoutes from './modules/eventLog.route'
 
 const router = Router()
 
@@ -24,5 +25,8 @@ router.use('/privileges', privilegeRoutes)
 router.use('/test-orders', testOrderRoutes)
 // Patient management routes
 router.use('/patients', patientRoutes)
+
+// Event log routes
+router.use('/event-logs', eventLogRoutes)
 
 export default router

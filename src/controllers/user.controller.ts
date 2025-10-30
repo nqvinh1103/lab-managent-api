@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { UserService } from '../services/user.service';
+import { logEvent } from '../utils/eventLog.helper';
 
 let userService: UserService | null = null;
 
@@ -29,6 +30,16 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       });
       return;
     }
+
+    // Log event
+    await logEvent(
+      'CREATE',
+      'User',
+      result.data!._id,
+      req.user?.id,
+      `Created user: ${result.data!.email} (${result.data!.full_name})`,
+      { email: result.data!.email, full_name: result.data!.full_name }
+    );
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -132,6 +143,20 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Log event
+    const changedFields = Object.keys(req.body).filter(key => !['updated_by'].includes(key));
+    await logEvent(
+      'UPDATE',
+      'User',
+      id,
+      req.user?.id,
+      `Updated user: ${result.data!.email} - changed: ${changedFields.join(', ')}`,
+      { 
+        changed_fields: changedFields,
+        email: result.data!.email 
+      }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: MESSAGES.UPDATED,
@@ -150,6 +175,11 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 export const deleteUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    
+    // Fetch user info before delete
+    const userResult = await getUserService().findById(id);
+    const userInfo = userResult.data;
+    
     const result = await getUserService().deleteById(id);
 
     if (!result.success) {
@@ -160,6 +190,16 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
       });
       return;
     }
+
+    // Log event
+    await logEvent(
+      'DELETE',
+      'User',
+      id,
+      req.user?.id,
+      `Deleted user: ${userInfo?.email} (${userInfo?.full_name})`,
+      { email: userInfo?.email, full_name: userInfo?.full_name }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -193,6 +233,17 @@ export const assignRole = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Log event
+    const userResult = await getUserService().findById(id);
+    await logEvent(
+      'UPDATE',
+      'User',
+      id,
+      req.user?.id,
+      `Assigned role to user: ${userResult.data?.email}`,
+      { roleId, email: userResult.data?.email }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'Role assigned successfully',
@@ -223,6 +274,17 @@ export const removeRole = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Log event
+    const userResult = await getUserService().findById(id);
+    await logEvent(
+      'UPDATE',
+      'User',
+      id,
+      req.user?.id,
+      `Removed role from user: ${userResult.data?.email}`,
+      { roleId, email: userResult.data?.email }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'Role removed successfully',
@@ -252,6 +314,17 @@ export const lockUser = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Log event
+    const userResult = await getUserService().findById(id);
+    await logEvent(
+      'UPDATE',
+      'User',
+      id,
+      req.user?.id,
+      `Locked user: ${userResult.data?.email}`,
+      { email: userResult.data?.email }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'User locked successfully',
@@ -280,6 +353,17 @@ export const unlockUser = async (req: Request, res: Response): Promise<void> => 
       });
       return;
     }
+
+    // Log event
+    const userResult = await getUserService().findById(id);
+    await logEvent(
+      'UPDATE',
+      'User',
+      id,
+      req.user?.id,
+      `Unlocked user: ${userResult.data?.email}`,
+      { email: userResult.data?.email }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
