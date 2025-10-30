@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
+import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder';
 import {
   createTestOrder,
+  deleteTestOrder,
   getAllTestOrders,
   getTestOrderById,
-  updateTestOrder,
-  deleteTestOrder
+  updateTestOrder
 } from '../services/testOrder.service';
-import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder';
+import { logEvent } from '../utils/eventLog.helper';
 
 /**
  * @openapi
@@ -191,6 +192,16 @@ export const createOrder = async (req: Request, res: Response) => {
     const orderData: CreateTestOrderInput = req.body;
     const result = await createTestOrder(orderData, userId);
 
+    // Log event
+    await logEvent(
+      'CREATE',
+      'TestOrder',
+      result._id,
+      userId,
+      `Created test order #${result.order_number} for patient ${result.patient_id}`,
+      { order_number: result.order_number, patient_id: result.patient_id.toString() }
+    );
+
     res.status(201).json({ success: true, data: result });
   } catch (error: any) {
     console.error(error);
@@ -310,6 +321,20 @@ export const updateOrder = async (req: Request, res: Response) => {
     const data: UpdateTestOrderInput = req.body;
     const updated = await updateTestOrder(id, data);
     if (!updated) return res.status(404).json({ success: false, message: 'Order not found or update failed' });
+    
+    // Log event
+    const user = (req as any).user;
+    const userId = user && user.id ? user.id : undefined;
+    const changedFields = Object.keys(data);
+    await logEvent(
+      'UPDATE',
+      'TestOrder',
+      id,
+      userId,
+      `Updated test order ${id} - changed: ${changedFields.join(', ')}`,
+      { changed_fields: changedFields }
+    );
+
     res.json({ success: true, data: updated });
   } catch (error) {
     console.error(error);
@@ -341,8 +366,25 @@ export const updateOrder = async (req: Request, res: Response) => {
 export const deleteOrder = async (req: Request, res: Response) => {
   try {
     const id = req.params.id;
+    
+    // Fetch test order info before delete
+    const testOrder = await getTestOrderById(id);
+    
     const ok = await deleteTestOrder(id);
     if (!ok) return res.status(404).json({ success: false, message: 'Order not found or delete failed' });
+    
+    // Log event
+    const user = (req as any).user;
+    const userId = user && user.id ? user.id : undefined;
+    await logEvent(
+      'DELETE',
+      'TestOrder',
+      id,
+      userId,
+      `Deleted test order #${testOrder?.order_number}`,
+      { order_number: testOrder?.order_number }
+    );
+
     res.json({ success: true, message: 'Deleted' });
   } catch (error) {
     console.error(error);

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import authRoutes from './modules/auth.route'
+import eventLogRoutes from './modules/eventLog.route'
 import instrumentRoutes from './modules/instrument.route'
 import instrumentReagentRoutes from './modules/instrumentReagent.route'
 import patientRoutes from './modules/patient.route'
@@ -32,4 +33,8 @@ router.use('/instruments', instrumentRoutes)
 
 // Instrument Reagent routes
 router.use('/instrument-reagents', instrumentReagentRoutes)
+
+// Event log routes
+router.use('/event-logs', eventLogRoutes)
+
 export default router

@@ -4,6 +4,7 @@ import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { PrivilegeDocument } from '../models/Privilege';
 import { RoleService } from '../services/role.service';
+import { logEvent } from '../utils/eventLog.helper';
 
 let roleService: RoleService | null = null;
 
@@ -27,6 +28,16 @@ export const createRole = async (req: Request, res: Response): Promise<void> => 
       });
       return;
     }
+
+    // Log event
+    await logEvent(
+      'CREATE',
+      'Role',
+      result.data!._id,
+      req.body.created_by,
+      `Created role: ${result.data!.role_name} (${result.data!.role_code})`,
+      { role_name: result.data!.role_name, role_code: result.data!.role_code }
+    );
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -166,6 +177,17 @@ export const updateRole = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Log event
+    const changedFields = Object.keys(req.body).filter(key => !['updated_by'].includes(key));
+    await logEvent(
+      'UPDATE',
+      'Role',
+      id,
+      req.body.updated_by,
+      `Updated role: ${result.data!.role_name} - changed: ${changedFields.join(', ')}`,
+      { changed_fields: changedFields, role_name: result.data!.role_name }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: MESSAGES.UPDATED,
@@ -184,6 +206,11 @@ export const updateRole = async (req: Request, res: Response): Promise<void> => 
 export const deleteRole = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    
+    // Fetch role info before delete
+    const roleResult = await getRoleService().findById(id);
+    const roleInfo = roleResult.data;
+    
     const result = await getRoleService().deleteById(id);
 
     if (!result.success) {
@@ -194,6 +221,16 @@ export const deleteRole = async (req: Request, res: Response): Promise<void> => 
       });
       return;
     }
+
+    // Log event
+    await logEvent(
+      'DELETE',
+      'Role',
+      id,
+      (req as any).user?.id,
+      `Deleted role: ${roleInfo?.role_name} (${roleInfo?.role_code})`,
+      { role_name: roleInfo?.role_name, role_code: roleInfo?.role_code }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -226,6 +263,17 @@ export const assignPrivilege = async (req: Request, res: Response): Promise<void
       return;
     }
 
+    // Log event
+    const roleResult = await getRoleService().findById(id);
+    await logEvent(
+      'UPDATE',
+      'Role',
+      id,
+      (req as any).user?.id,
+      `Assigned privilege to role: ${roleResult.data?.role_name}`,
+      { privilegeId, role_name: roleResult.data?.role_name }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'Privilege assigned successfully',
@@ -255,6 +303,17 @@ export const removePrivilege = async (req: Request, res: Response): Promise<void
       });
       return;
     }
+
+    // Log event
+    const roleResult = await getRoleService().findById(id);
+    await logEvent(
+      'UPDATE',
+      'Role',
+      id,
+      (req as any).user?.id,
+      `Removed privilege from role: ${roleResult.data?.role_name}`,
+      { privilegeId, role_name: roleResult.data?.role_name }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,

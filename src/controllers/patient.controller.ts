@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { PatientService } from '../services/patient.service';
+import { logEvent } from '../utils/eventLog.helper';
 
 let patientService: PatientService | null = null;
 
@@ -43,6 +44,16 @@ export const createPatient = async (req: Request, res: Response): Promise<void> 
     } else {
       message += 'Warning: Failed to send credentials email';
     }
+
+    // Log event
+    await logEvent(
+      'CREATE',
+      'Patient',
+      patientInfo._id,
+      req.user?.id,
+      `Created patient: ${patientInfo.patient_id} - ${patientInfo.full_name}`,
+      { patient_id: patientInfo.patient_id, full_name: patientInfo.full_name }
+    );
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -160,6 +171,17 @@ export const updatePatient = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Log event
+    const changedFields = Object.keys(req.body).filter(key => !['updated_by'].includes(key));
+    await logEvent(
+      'UPDATE',
+      'Patient',
+      id,
+      req.user?.id,
+      `Updated patient: ${result.data!.patient_id} - changed: ${changedFields.join(', ')}`,
+      { changed_fields: changedFields, patient_id: result.data!.patient_id }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: MESSAGES.UPDATED,
@@ -188,6 +210,10 @@ export const deletePatient = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Fetch patient info before delete
+    const patientResult = await getPatientService().getById(id);
+    const patientInfo = patientResult.data;
+
     const deletedBy = new ObjectId(req.user.id);
 
     const result = await getPatientService().delete(id, deletedBy);
@@ -200,6 +226,16 @@ export const deletePatient = async (req: Request, res: Response): Promise<void> 
       });
       return;
     }
+
+    // Log event
+    await logEvent(
+      'DELETE',
+      'Patient',
+      id,
+      req.user?.id,
+      `Deleted patient: ${patientInfo?.patient_id} - ${patientInfo?.full_name}`,
+      { patient_id: patientInfo?.patient_id, full_name: patientInfo?.full_name }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
