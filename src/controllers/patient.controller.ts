@@ -51,8 +51,8 @@ export const createPatient = async (req: Request, res: Response): Promise<void> 
       'Patient',
       patientInfo._id,
       req.user?.id,
-      `Created patient: ${patientInfo.patient_id} - ${patientInfo.full_name}`,
-      { patient_id: patientInfo.patient_id, full_name: patientInfo.full_name }
+      `Created patient: ${patientInfo.email} - ${patientInfo.full_name}`,
+      { patient_id: patientInfo.email, full_name: patientInfo.full_name }
     );
 
     res.status(HTTP_STATUS.CREATED).json({
@@ -178,8 +178,8 @@ export const updatePatient = async (req: Request, res: Response): Promise<void> 
       'Patient',
       id,
       req.user?.id,
-      `Updated patient: ${result.data!.patient_id} - changed: ${changedFields.join(', ')}`,
-      { changed_fields: changedFields, patient_id: result.data!.patient_id }
+      `Updated patient: ${result.data!.email} - changed: ${changedFields.join(', ')}`,
+      { changed_fields: changedFields, email: result.data!.email }
     );
 
     res.status(HTTP_STATUS.OK).json({
@@ -233,8 +233,8 @@ export const deletePatient = async (req: Request, res: Response): Promise<void> 
       'Patient',
       id,
       req.user?.id,
-      `Deleted patient: ${patientInfo?.patient_id} - ${patientInfo?.full_name}`,
-      { patient_id: patientInfo?.patient_id, full_name: patientInfo?.full_name }
+      `Deleted patient: ${patientInfo?.email} - ${patientInfo?.full_name}`,
+      { email: patientInfo?.email, full_name: patientInfo?.full_name }
     );
 
     res.status(HTTP_STATUS.OK).json({
