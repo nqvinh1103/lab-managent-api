@@ -1,14 +1,138 @@
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
+import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder';
 import {
   createTestOrder,
+  deleteTestOrder,
   getAllTestOrders,
   getTestOrderById,
-  updateTestOrder,
-  deleteTestOrder
+  updateTestOrder
 } from '../services/testOrder.service';
-import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder';
 import { logEvent } from '../utils/eventLog.helper';
+
+/**
+ * @openapi
+ * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *
+ *   schemas:
+ *     Patient:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: Unique identifier for the patient
+ *         full_name:
+ *           type: string
+ *           description: Full name of the patient
+ *         identity_number:
+ *           type: string
+ *           description: Identity number of the patient
+ *         date_of_birth:
+ *           type: string
+ *           format: date-time
+ *           description: Date of birth
+ *         gender:
+ *           type: string
+ *           enum: [male, female]
+ *           description: Gender of the patient
+ *         address:
+ *           type: string
+ *           description: Address of the patient
+ *         phone_number:
+ *           type: string
+ *           description: Phone number of the patient
+ *         email:
+ *           type: string
+ *           description: Email of the patient
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           description: Creation timestamp
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *           description: Last update timestamp
+ *     TestOrder:
+ *       type: object
+ *       required:
+ *         - instrument_id
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: Unique identifier for the test order
+ *         order_number:
+ *           type: string
+ *           description: Order number
+ *         patient:
+ *           oneOf:
+ *             - $ref: '#/components/schemas/Patient'
+ *             - type: "null"
+ *           description: Patient information (null if patient not found or deleted)
+ *         instrument_id:
+ *           type: string
+ *           description: ID of the instrument
+ *         barcode:
+ *           type: string
+ *           description: Generated barcode for the order
+ *         status:
+ *           type: string
+ *           enum: [pending, running, completed, cancelled, failed]
+ *           default: pending
+ *         test_results:
+ *           type: array
+ *           items:
+ *             type: object
+ *           description: Test results array
+ *         comments:
+ *           type: array
+ *           items:
+ *             type: object
+ *           description: Comments array
+ *         run_by:
+ *           type: string
+ *           description: ID of the user who ran this order
+ *         run_at:
+ *           type: string
+ *           format: date-time
+ *           description: When the order was run
+ *         created_by:
+ *           type: string
+ *           description: ID of the user who created this order
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           description: Creation timestamp
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *           description: Last update timestamp
+ *       example:
+ *         _id: "671f8a36e9e9f84ef4a12345"
+ *         order_number: "ORD-1729933200000"
+ *         patient:
+ *           _id: "671f8a36e9e9f84ef4a22222"
+ *           full_name: "Nguyen Van A"
+ *           identity_number: "123456789"
+ *           date_of_birth: "1990-01-01T00:00:00.000Z"
+ *           gender: "male"
+ *           address: "123 Main St"
+ *           phone_number: "0123456789"
+ *           email: "patient@example.com"
+ *         instrument_id: "671f8a36e9e9f84ef4a33333"
+ *         barcode: "BC-ABC123XYZ"
+ *         status: "pending"
+ *         test_results: []
+ *         comments: []
+ *         created_by: "671f8a36e9e9f84ef4a44444"
+ *         created_at: "2025-10-29T12:00:00.000Z"
+ *         updated_at: "2025-10-29T12:00:00.000Z"
+ */
+
 /**
  * @openapi
  * /test-orders:
@@ -16,24 +140,23 @@ import { logEvent } from '../utils/eventLog.helper';
  *     tags:
  *       - TestOrders
  *     summary: Create a new test order
+ *     description: Create a new test order. Requires authentication.
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               patient_id:
- *                 type: string
- *                 description: ID of the patient
- *               instrument_id:
- *                 type: string
- *                 description: ID of the instrument
- *             required:
- *               - patient_id
- *               - instrument_id
+ *             $ref: '#/components/schemas/TestOrder'
+ *           example:
+ *             patient_id: "671f8a36e9e9f84ef4a22222"
+ *             instrument_id: "671f8a36e9e9f84ef4a33333"
+ *           note: |
+ *             Note: When creating a test order, use patient_id.
+ *             The API response will include the full patient object instead of patient_id.
  *     responses:
- *       '201':
+ *       201:
  *         description: Created successfully
  *         content:
  *           application/json:
@@ -43,29 +166,31 @@ import { logEvent } from '../utils/eventLog.helper';
  *                 success:
  *                   type: boolean
  *                 data:
- *                   type: object
- *                   description: The created test order
- *       '500':
+ *                   $ref: '#/components/schemas/TestOrder'
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               error: User not authenticated
+ *       500:
  *         description: Failed to create test order
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 error:
- *                   type: string
+ *             example:
+ *               success: false
+ *               error: Failed to create test order
  */
 export const createOrder = async (req: Request, res: Response) => {
   try {
-  // JWT middleware should attach user id to req.user
-  const user = (req as any).user;
-  const userId = user && user.id ? new ObjectId(user.id) : undefined;
+    console.log('Authorization header:', req.headers.authorization);
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ success: false, error: 'User not authenticated' });
 
+    const userId = new ObjectId(user.id);
     const orderData: CreateTestOrderInput = req.body;
-    const result = await createTestOrder(orderData, userId ?? new ObjectId());
-    console.log('Order created:', result);
+    const result = await createTestOrder(orderData, userId);
 
     // Log event
     await logEvent(
@@ -78,7 +203,7 @@ export const createOrder = async (req: Request, res: Response) => {
     );
 
     res.status(201).json({ success: true, data: result });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ success: false, error: 'Failed to create test order' });
   }
@@ -91,9 +216,24 @@ export const createOrder = async (req: Request, res: Response) => {
  *     tags:
  *       - TestOrders
  *     summary: Get all test orders
+ *     security:
+ *       - bearerAuth: []
  *     responses:
- *       '200':
- *         description: OK
+ *       200:
+ *         description: List of all test orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/TestOrder'
+ *       500:
+ *         description: Server error
  */
 export const getOrders = async (_req: Request, res: Response) => {
   try {
@@ -111,18 +251,30 @@ export const getOrders = async (_req: Request, res: Response) => {
  *   get:
  *     tags:
  *       - TestOrders
- *     summary: Get a test order by id
+ *     summary: Get a test order by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *           example: "671f8a36e9e9f84ef4a12345"
  *     responses:
- *       '200':
- *         description: OK
- *       '404':
- *         description: Not Found
+ *       200:
+ *         description: Test order found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/TestOrder'
+ *       404:
+ *         description: Test order not found
  */
 export const getOrderById = async (req: Request, res: Response) => {
   try {
@@ -143,6 +295,8 @@ export const getOrderById = async (req: Request, res: Response) => {
  *     tags:
  *       - TestOrders
  *     summary: Update a test order
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -154,12 +308,12 @@ export const getOrderById = async (req: Request, res: Response) => {
  *       content:
  *         application/json:
  *           schema:
- *             type: object
+ *             $ref: '#/components/schemas/TestOrder'
  *     responses:
- *       '200':
- *         description: Updated
- *       '404':
- *         description: Not Found
+ *       200:
+ *         description: Updated successfully
+ *       404:
+ *         description: Test order not found
  */
 export const updateOrder = async (req: Request, res: Response) => {
   try {
@@ -195,6 +349,8 @@ export const updateOrder = async (req: Request, res: Response) => {
  *     tags:
  *       - TestOrders
  *     summary: Delete a test order
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -202,10 +358,10 @@ export const updateOrder = async (req: Request, res: Response) => {
  *         schema:
  *           type: string
  *     responses:
- *       '200':
- *         description: Deleted
- *       '404':
- *         description: Not Found
+ *       200:
+ *         description: Deleted successfully
+ *       404:
+ *         description: Test order not found
  */
 export const deleteOrder = async (req: Request, res: Response) => {
   try {
@@ -235,4 +391,3 @@ export const deleteOrder = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Failed to delete test order' });
   }
 };
-

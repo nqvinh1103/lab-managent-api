@@ -11,7 +11,7 @@ import { extractTokenFromHeader, verifyToken } from '../utils/jwt'
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const token = extractTokenFromHeader(req.headers.authorization)
-    
+     console.log('Authenticatedddddddddd user in middleware:', req.user);
     if (!token) {
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
@@ -23,6 +23,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
 
     const decoded = verifyToken(token)
     req.user = decoded
+   
     next()
   } catch (error) {
     res.status(HTTP_STATUS.UNAUTHORIZED).json({
