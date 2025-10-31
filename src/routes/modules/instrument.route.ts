@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   activateInstrument,
+  changeModeInstrument,
   createInstrument,
   deactivateInstrument,
   deleteInstrument,
@@ -88,6 +89,16 @@ router.post(
   instrumentIdValidation,
   validationMiddleware,
   deactivateInstrument
+);
+
+// Change instrument mode (3.6.1.1)
+router.post(
+  '/:id/change-mode',
+  authMiddleware,
+  checkPrivilege([PRIVILEGES.ACTIVATE_DEACTIVATE_INSTRUMENT]),
+  instrumentIdValidation,
+  validationMiddleware,
+  changeModeInstrument
 );
 
 export default router;

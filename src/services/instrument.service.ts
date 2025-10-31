@@ -298,5 +298,102 @@ export class InstrumentService {
       };
     }
   }
+
+  // Change instrument mode (3.6.1.1)
+  async changeMode(
+    id: string | ObjectId,
+    newMode: 'ready' | 'maintenance' | 'inactive',
+    modeReason?: string,
+    updatedBy?: ObjectId
+  ): Promise<QueryResult<InstrumentDocument>> {
+    try {
+      const objectId = toObjectId(id);
+      if (!objectId) {
+        return {
+          success: false,
+          error: 'Invalid instrument ID'
+        };
+      }
+
+      // Get current instrument
+      const instrument = await this.collection.findOne({ _id: objectId });
+      if (!instrument) {
+        return {
+          success: false,
+          error: 'Instrument not found'
+        };
+      }
+
+      // Validation logic based on mode
+      if (newMode === 'ready') {
+        // For 'ready' mode, require QC check within last 24 hours
+        if (!instrument.last_qc_check) {
+          return {
+            success: false,
+            error: 'Cannot set to ready mode: QC check has never been performed'
+          };
+        }
+
+        const now = new Date();
+        const qcCheckTime = new Date(instrument.last_qc_check);
+        const hoursSinceQC = (now.getTime() - qcCheckTime.getTime()) / (1000 * 60 * 60);
+
+        if (hoursSinceQC > 24) {
+          return {
+            success: false,
+            error: 'Cannot set to ready mode: QC check must be performed within the last 24 hours'
+          };
+        }
+      } else if (newMode === 'maintenance' || newMode === 'inactive') {
+        // For 'maintenance' or 'inactive' mode, require a reason
+        if (!modeReason || modeReason.trim().length === 0) {
+          return {
+            success: false,
+            error: `mode_reason is required when setting mode to ${newMode}`
+          };
+        }
+      }
+
+      // Prepare update document
+      const updateDoc: any = {
+        mode: newMode,
+        updated_at: new Date()
+      };
+
+      if (updatedBy) {
+        updateDoc.updated_by = updatedBy;
+      }
+
+      if (modeReason) {
+        updateDoc.mode_reason = modeReason;
+      } else {
+        // Clear mode_reason if switching to 'ready'
+        updateDoc.mode_reason = undefined;
+      }
+
+      const result = await this.collection.findOneAndUpdate(
+        { _id: objectId },
+        { $set: updateDoc, ...(newMode === 'ready' ? { $unset: { mode_reason: '' } } : {}) },
+        { returnDocument: 'after' }
+      );
+
+      if (!result) {
+        return {
+          success: false,
+          error: 'Failed to change instrument mode'
+        };
+      }
+
+      return {
+        success: true,
+        data: result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+      };
+    }
+  }
 }
 
