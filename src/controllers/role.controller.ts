@@ -18,7 +18,16 @@ const getRoleService = () => {
 // Create role
 export const createRole = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = await getRoleService().create(req.body);
+    if (!req.user?.id) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'User not authenticated'
+      });
+      return;
+    }
+
+    const result = await getRoleService().create(req.body, req.user.id);
 
     if (!result.success) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -34,7 +43,7 @@ export const createRole = async (req: Request, res: Response): Promise<void> => 
       'CREATE',
       'Role',
       result.data!._id,
-      req.body.created_by,
+      req.user.id,
       `Created role: ${result.data!.role_name} (${result.data!.role_code})`,
       { role_name: result.data!.role_name, role_code: result.data!.role_code }
     );
@@ -165,8 +174,17 @@ export const getRoleWithPrivileges = async (req: Request, res: Response): Promis
 // Update role
 export const updateRole = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!req.user?.id) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'User not authenticated'
+      });
+      return;
+    }
+
     const { id } = req.params;
-    const result = await getRoleService().findByIdAndUpdate(id, req.body);
+    const result = await getRoleService().findByIdAndUpdate(id, req.body, req.user.id);
 
     if (!result.success) {
       res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -183,7 +201,7 @@ export const updateRole = async (req: Request, res: Response): Promise<void> => 
       'UPDATE',
       'Role',
       id,
-      req.body.updated_by,
+      req.user.id,
       `Updated role: ${result.data!.role_name} - changed: ${changedFields.join(', ')}`,
       { changed_fields: changedFields, role_name: result.data!.role_name }
     );

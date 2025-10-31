@@ -18,5 +18,9 @@ export type RoleDocument = IRole & {
   updated_at: Date;
 };
 
-export type CreateRoleInput = Omit<IRole, '_id' | 'created_at' | 'updated_at'>;
-export type UpdateRoleInput = Partial<Omit<IRole, '_id' | 'created_at' | 'updated_at'>>;
+export type CreateRoleInput = Omit<IRole, '_id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by' | 'privilege_ids'> & {
+  privilege_ids?: (string | ObjectId)[];
+};
+export type UpdateRoleInput = Partial<Omit<IRole, '_id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by' | 'privilege_ids'>> & {
+  privilege_ids?: (string | ObjectId)[];
+};
