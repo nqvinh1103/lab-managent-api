@@ -1,18 +1,18 @@
 import { Router } from 'express'
 import authRoutes from './modules/auth.route'
 import configurationRoutes from './modules/configuration.route'
-import eventLogRoutes from './modules/eventLog.route'
-import instrumentRoutes from './modules/instrument.route'
-import instrumentReagentRoutes from './modules/instrumentReagent.route'
+import roleRoutes from './modules/role.route'
 import parameterRoutes from './modules/parameter.route'
-import patientRoutes from './modules/patient.route'
+import userRoutes from './modules/user.route'
 import privilegeRoutes from './modules/privilege.route'
 import rawTestResultRoutes from './modules/rawTestResult.route'
 import reagentUsageHistoryRoutes from './modules/reagentUsageHistory.route'
 import reagentVendorSupplyRoutes from './modules/reagentVendorSupply.route'
-import roleRoutes from './modules/role.route'
 import testOrderRoutes from './modules/testOrder.route'
-import userRoutes from './modules/user.route'
+import patientRoutes from './modules/patient.route'
+import testResultRoutes from './modules/testResult.route';
+import instrumentReagentRoutes from './modules/instrumentReagent.route';
+
 
 const router = Router()
 
@@ -39,9 +39,6 @@ router.use('/test-orders', testOrderRoutes)
 // Patient management routes
 router.use('/patients', patientRoutes)
 
-// Instrument routes
-router.use('/instruments', instrumentRoutes)
-
 // Instrument Reagent routes
 router.use('/instrument-reagents', instrumentReagentRoutes)
 
@@ -51,9 +48,8 @@ router.use('/reagent-vendor-supply', reagentVendorSupplyRoutes)
 // Reagent Usage History routes
 router.use('/reagent-usage-history', reagentUsageHistoryRoutes)
 
-// Event log routes
-router.use('/event-logs', eventLogRoutes)
-
+// TestResult routes
+router.use('/test-results', testResultRoutes);
 // Monitoring routes (Raw Test Results)
 router.use('/monitoring/raw-results', rawTestResultRoutes)
 
