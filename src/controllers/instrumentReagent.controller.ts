@@ -4,9 +4,11 @@ import {
   getAllInstrumentReagents,
   getInstrumentReagentById,
   updateInstrumentReagent,
+  updateReagentStatus,
   deleteInstrumentReagent
 } from '../services/instrumentReagent.service';
 import { ObjectId } from 'mongodb';
+import { logEvent } from '../utils/eventLog.helper';
 
 /**
  * @openapi
@@ -262,9 +264,71 @@ export const updateReagentController = async (req: Request, res: Response) => {
   }
 };
 
+// Update reagent status (3.6.2.2)
+export const updateReagentStatusController = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['in_use', 'not_in_use', 'expired'].includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid status. Must be one of: in_use, not_in_use, expired' 
+      });
+    }
+
+    const updated = await updateReagentStatus(id, status);
+
+    // Log event
+    const user = (req as any).user;
+    const userId = user && user.id ? user.id : undefined;
+    await logEvent(
+      'UPDATE',
+      'InstrumentReagent',
+      id,
+      userId,
+      `Updated reagent status to "${status}" - Lot: ${updated.reagent_lot_number}`,
+      { reagent_lot_number: updated.reagent_lot_number, new_status: status }
+    );
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    if (error.message === 'Invalid ObjectId') {
+      return res.status(400).json({ success: false, error: 'Invalid id format' });
+    }
+    if (error.message === 'Reagent not found' || error.message === 'Document not found') {
+      return res.status(404).json({ success: false, error: 'Reagent not found' });
+    }
+    if (error.message.includes('already marked as')) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    console.error(error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
+// Delete reagent with event logging (3.6.2.3)
 export const deleteReagentController = async (req: Request, res: Response) => {
   try {
-    await deleteInstrumentReagent(req.params.id);
+    const { id } = req.params;
+
+    // Get reagent info before delete for logging
+    const reagent = await getInstrumentReagentById(id);
+
+    await deleteInstrumentReagent(id);
+
+    // Log event
+    const user = (req as any).user;
+    const userId = user && user.id ? user.id : undefined;
+    await logEvent(
+      'DELETE',
+      'InstrumentReagent',
+      id,
+      userId,
+      `Deleted reagent - Lot: ${reagent.reagent_lot_number}, Name: ${reagent.reagent_name}`,
+      { reagent_lot_number: reagent.reagent_lot_number, reagent_name: reagent.reagent_name }
+    );
+
     res.json({ success: true, message: 'Deleted successfully' });
   } catch (error: any) {
     if (error.message === 'Invalid ObjectId') return res.status(400).json({ success: false, error: 'Invalid id format' });

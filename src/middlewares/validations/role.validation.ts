@@ -16,10 +16,9 @@ export const createRoleValidation = [
   body('privilege_ids')
     .optional()
     .isArray().withMessage('privilege_ids must be an array'),
-  body('created_by')
-    .notEmpty().withMessage('created_by is required'),
-  body('updated_by')
-    .notEmpty().withMessage('updated_by is required')
+  body('privilege_ids.*')
+    .optional()
+    .isMongoId().withMessage('Each privilege ID must be a valid MongoId')
 ];
 
 export const updateRoleValidation = [
@@ -37,9 +36,7 @@ export const updateRoleValidation = [
     .matches(/^[A-Z0-9_]+$/).withMessage('Role code must contain only uppercase letters, numbers, and underscores'),
   body('role_description')
     .optional()
-    .trim(),
-  body('updated_by')
-    .notEmpty().withMessage('updated_by is required')
+    .trim()
 ];
 
 export const roleIdValidation = [

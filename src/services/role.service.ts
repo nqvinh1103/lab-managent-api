@@ -6,10 +6,24 @@ import { createPaginationOptions, createSortOptions, OperationResult, QueryResul
 export class RoleService {
   private collection = getCollection<RoleDocument>('roles');
 
-  async create(roleData: CreateRoleInput): Promise<QueryResult<RoleDocument>> {
+  async create(roleData: CreateRoleInput, userId: string | ObjectId): Promise<QueryResult<RoleDocument>> {
     try {
+      const userObjectId = toObjectId(userId);
+      if (!userObjectId) {
+        return {
+          success: false,
+          error: 'Invalid user ID'
+        };
+      }
+
+      // Convert privilege_ids from strings to ObjectId if needed
+      const privilegeIds = (roleData.privilege_ids || []).map(id => toObjectId(id)).filter((id): id is ObjectId => id !== null);
+
       const roleToInsert: Omit<RoleDocument, '_id'> = {
         ...roleData,
+        privilege_ids: privilegeIds,
+        created_by: userObjectId,
+        updated_by: userObjectId,
         created_at: new Date(),
         updated_at: new Date()
       };
@@ -90,7 +104,7 @@ export class RoleService {
     }
   }
 
-  async findByIdAndUpdate(id: string | ObjectId, updateData: UpdateRoleInput): Promise<QueryResult<RoleDocument>> {
+  async findByIdAndUpdate(id: string | ObjectId, updateData: UpdateRoleInput, userId: string | ObjectId): Promise<QueryResult<RoleDocument>> {
     try {
       const objectId = toObjectId(id);
       if (!objectId) {
@@ -100,10 +114,26 @@ export class RoleService {
         };
       }
 
-      const updateDoc = {
+      const userObjectId = toObjectId(userId);
+      if (!userObjectId) {
+        return {
+          success: false,
+          error: 'Invalid user ID'
+        };
+      }
+
+      // Convert privilege_ids from strings to ObjectId if provided
+      const updateDoc: any = {
         ...updateData,
+        updated_by: userObjectId,
         updated_at: new Date()
       };
+      
+      if (updateData.privilege_ids) {
+        updateDoc.privilege_ids = updateData.privilege_ids
+          .map(id => toObjectId(id))
+          .filter((id): id is ObjectId => id !== null);
+      }
 
       const result = await this.collection.findOneAndUpdate(
         { _id: objectId },
