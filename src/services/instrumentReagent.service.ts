@@ -7,13 +7,20 @@ import {
   UpdateInstrumentReagentInput
 } from '../models/InstrumentReagent';
 import { ReagentVendorSupplyService } from './reagentVendorSupply.service';
+import { toObjectId } from '../utils/database.helper';
 
 const COLLECTION = 'instrument_reagents';
 
 // Create - Install reagent with validation (3.6.2.1)
-export const createInstrumentReagent = async (data: CreateInstrumentReagentInput): Promise<InstrumentReagentDocument> => {
+export const createInstrumentReagent = async (data: CreateInstrumentReagentInput, userId: string | ObjectId): Promise<InstrumentReagentDocument> => {
   const collection = getCollection<IInstrumentReagent>(COLLECTION);
   const now = new Date();
+
+  // Validate and convert userId to ObjectId
+  const userObjectId = toObjectId(userId);
+  if (!userObjectId) {
+    throw new Error('Invalid user ID');
+  }
 
   // Validation: expiration_date must be in the future
   if (data.expiration_date <= now) {
@@ -35,6 +42,7 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
 
   const newDoc: IInstrumentReagent = {
     ...data,
+    created_by: userObjectId,
     quantity_remaining,
     _id: new ObjectId(),
     created_at: now,

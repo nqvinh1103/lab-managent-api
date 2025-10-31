@@ -25,7 +25,7 @@ export type InstrumentReagentDocument = IInstrumentReagent & {
   created_at: Date;
 };
 
-export type CreateInstrumentReagentInput = Omit<IInstrumentReagent, '_id' | 'created_at' | 'quantity_remaining'> & {
+export type CreateInstrumentReagentInput = Omit<IInstrumentReagent, '_id' | 'created_at' | 'quantity_remaining' | 'created_by'> & {
   quantity_remaining?: number; // Optional, defaults to quantity if not provided
 };
 export type UpdateInstrumentReagentInput = Partial<Omit<IInstrumentReagent, '_id' | 'created_at'>>;

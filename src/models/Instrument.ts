@@ -24,5 +24,5 @@ export type InstrumentDocument = IInstrument & {
   updated_at: Date;
 };
 
-export type CreateInstrumentInput = Omit<IInstrument, '_id' | 'created_at' | 'updated_at'>;
-export type UpdateInstrumentInput = Partial<Omit<IInstrument, '_id' | 'created_at' | 'updated_at'>>;
+export type CreateInstrumentInput = Omit<IInstrument, '_id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>;
+export type UpdateInstrumentInput = Partial<Omit<IInstrument, '_id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>>;

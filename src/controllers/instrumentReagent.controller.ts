@@ -212,21 +212,20 @@ import { logEvent } from '../utils/eventLog.helper';
 
 export const createReagentController = async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    console.log('Authenticated user:', user);
-    if (!user) {
+    if (!req.user?.id) {
       return res.status(401).json({ success: false, error: 'User not authenticated' });
     }
 
-    const userId = new ObjectId(user.id);
-    const reagentData = req.body;
-    reagentData.created_by = userId;
-
-    const result = await createInstrumentReagent(reagentData);
+    const result = await createInstrumentReagent(req.body, req.user.id);
     res.status(201).json({ success: true, data: result });
   } catch (error: any) {
     console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to create instrument reagent' });
+    const statusCode = error.message.includes('Invalid user ID') 
+      ? 400 
+      : error.message.includes('not authenticated') 
+        ? 401 
+        : 500;
+    res.status(statusCode).json({ success: false, error: error.message || 'Failed to create instrument reagent' });
   }
 };
 

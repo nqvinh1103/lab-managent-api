@@ -11,8 +11,16 @@ import { createPaginationOptions, createTextSearchFilter, QueryResult, toObjectI
 export class InstrumentService {
   private collection = getCollection<InstrumentDocument>('instruments');
 
-  async create(instrumentData: CreateInstrumentInput): Promise<QueryResult<InstrumentDocument>> {
+  async create(instrumentData: CreateInstrumentInput, userId: string | ObjectId): Promise<QueryResult<InstrumentDocument>> {
     try {
+      const userObjectId = toObjectId(userId);
+      if (!userObjectId) {
+        return {
+          success: false,
+          error: 'Invalid user ID'
+        };
+      }
+
       // Check if serial_number already exists
       const existingInstrument = await this.collection.findOne({
         serial_number: instrumentData.serial_number
@@ -27,6 +35,8 @@ export class InstrumentService {
 
       const instrumentToInsert: Omit<InstrumentDocument, '_id'> = {
         ...instrumentData,
+        created_by: userObjectId,
+        updated_by: userObjectId,
         created_at: new Date(),
         updated_at: new Date()
       };
@@ -131,7 +141,8 @@ export class InstrumentService {
 
   async findByIdAndUpdate(
     id: string | ObjectId,
-    updateData: UpdateInstrumentInput
+    updateData: UpdateInstrumentInput,
+    userId: string | ObjectId
   ): Promise<QueryResult<InstrumentDocument>> {
     try {
       const objectId = toObjectId(id);
@@ -139,6 +150,14 @@ export class InstrumentService {
         return {
           success: false,
           error: 'Invalid instrument ID'
+        };
+      }
+
+      const userObjectId = toObjectId(userId);
+      if (!userObjectId) {
+        return {
+          success: false,
+          error: 'Invalid user ID'
         };
       }
 
@@ -159,6 +178,7 @@ export class InstrumentService {
 
       const updateDoc = {
         ...updateData,
+        updated_by: userObjectId,
         updated_at: new Date()
       };
 
