@@ -6,6 +6,9 @@ export interface IInstrument {
   instrument_type: string;
   serial_number: string;
   status: 'active' | 'inactive' | 'maintenance' | 'decommissioned';
+  mode?: 'ready' | 'maintenance' | 'inactive'; // NEW: Operational mode (3.6.1.1)
+  mode_reason?: string; // NEW: Reason for maintenance/inactive mode
+  last_qc_check?: Date; // NEW: Last quality control check timestamp
   is_active: boolean;
   deactivated_at?: Date;
   auto_delete_scheduled_at?: Date;

@@ -257,3 +257,94 @@ export const deactivateInstrument = async (req: Request, res: Response): Promise
   }
 };
 
+/**
+ * @openapi
+ * /instruments/{id}/change-mode:
+ *   post:
+ *     tags:
+ *       - Instruments
+ *     summary: Change instrument operational mode
+ *     description: |
+ *       Change instrument mode to ready, maintenance, or inactive (3.6.1.1)
+ *       - ready: Requires QC check within last 24 hours
+ *       - maintenance/inactive: Requires mode_reason
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Instrument ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - mode
+ *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [ready, maintenance, inactive]
+ *               mode_reason:
+ *                 type: string
+ *                 description: Required for maintenance/inactive modes
+ *           examples:
+ *             ready:
+ *               value:
+ *                 mode: ready
+ *             maintenance:
+ *               value:
+ *                 mode: maintenance
+ *                 mode_reason: Scheduled calibration
+ *     responses:
+ *       200:
+ *         description: Mode changed successfully
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Instrument not found
+ */
+export const changeModeInstrument = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { mode, mode_reason } = req.body;
+
+    if (!mode || !['ready', 'maintenance', 'inactive'].includes(mode)) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: 'Invalid mode',
+        error: 'mode must be one of: ready, maintenance, inactive'
+      });
+      return;
+    }
+
+    const updatedBy = req.user?.id ? new ObjectId(req.user.id) : undefined;
+    const result = await getInstrumentService().changeMode(id, mode, mode_reason, updatedBy);
+
+    if (!result.success) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: result.error || 'Failed to change instrument mode',
+        error: result.error
+      });
+      return;
+    }
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: `Instrument mode changed to ${mode}`,
+      data: result.data
+    });
+  } catch (error) {
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: MESSAGES.INTERNAL_ERROR,
+      error: error instanceof Error ? error.message : 'Failed to change instrument mode'
+    });
+  }
+};
+
