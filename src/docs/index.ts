@@ -15,4 +15,8 @@ import './endpoints/patient.docs';
 import './endpoints/privilege.docs';
 import './endpoints/role.docs';
 import './endpoints/user.docs';
+import './endpoints/reagentUsageHistory.docs';
+
+// reagent usage schemas
+import './schemas/reagentUsageHistory.schema';
 

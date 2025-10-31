@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import {
+  createUsage,
+  getUsages,
+  getUsageById,
+  updateUsage,
+  deleteUsage,
+} from '../../controllers/reagentUsageHistory.controller';
+import { authMiddleware } from '../../middlewares/auth.middleware';
   getAllUsageHistory,
   getUsageHistoryById
 } from '../../controllers/reagentUsageHistory.controller';
@@ -9,6 +16,13 @@ import { validationMiddleware } from '../../middlewares/validation.middleware';
 
 const router = Router();
 
+router.post('/', authMiddleware, validationMiddleware, createUsage);
+router.get('/', authMiddleware, getUsages);
+router.get('/:id', authMiddleware, validationMiddleware, getUsageById);
+router.put('/:id', authMiddleware, validationMiddleware, updateUsage);
+router.delete('/:id', authMiddleware, validationMiddleware, deleteUsage);
+
+export default router;
 // Validation for query parameters
 const searchValidation = [
   query('reagent_lot_number').optional().trim(),
