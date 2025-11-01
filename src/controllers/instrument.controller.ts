@@ -16,13 +16,19 @@ const getInstrumentService = () => {
 // Create instrument
 export const createInstrument = async (req: Request, res: Response): Promise<void> => {
   try {
-    const instrumentData = {
-      ...req.body,
-      created_by: req.user?.id ? new ObjectId(req.user.id) : undefined,
-      updated_by: req.user?.id ? new ObjectId(req.user.id) : undefined,
-    };
+    if (!req.user?.id) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'User not authenticated'
+      });
+      return;
+    }
 
-    const result = await getInstrumentService().create(instrumentData);
+    // Extract reagents from request body (optional, for Use Case 2: Install during creation)
+    const { reagents, ...instrumentData } = req.body;
+
+    const result = await getInstrumentService().create(instrumentData, req.user.id, reagents);
 
     if (!result.success) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -117,13 +123,17 @@ export const getInstrumentById = async (req: Request, res: Response): Promise<vo
 // Update instrument
 export const updateInstrument = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const updateData = {
-      ...req.body,
-      updated_by: req.user?.id ? new ObjectId(req.user.id) : undefined
-    };
+    if (!req.user?.id) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'User not authenticated'
+      });
+      return;
+    }
 
-    const result = await getInstrumentService().findByIdAndUpdate(id, updateData);
+    const { id } = req.params;
+    const result = await getInstrumentService().findByIdAndUpdate(id, req.body, req.user.id);
 
     if (!result.success) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({

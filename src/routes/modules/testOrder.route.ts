@@ -17,6 +17,18 @@ import {
 import { authMiddleware, checkPrivilege } from '~/middlewares/auth.middleware'
 import { PRIVILEGES } from '~/constants/privileges'
 import { validationMiddleware } from '~/middlewares/validation.middleware'
+import {
+  createTestOrderValidation,
+  updateTestOrderValidation,
+  testOrderIdValidation,
+  addCommentValidation,
+  updateCommentValidation,
+  deleteCommentValidation,
+  addResultsValidation,
+  completeTestOrderValidation,
+  processSampleValidation,
+  printTestOrderValidation
+} from '~/middlewares/validations/testOrder.validation'
 
 const router = Router()
 
@@ -25,6 +37,7 @@ router.post(
   '/',
   authMiddleware,
   checkPrivilege([PRIVILEGES.CREATE_TEST_ORDER]),
+  ...createTestOrderValidation,
   validationMiddleware,
   createOrder
 )
@@ -34,6 +47,7 @@ router.post(
   '/process-sample',
   authMiddleware,
   checkPrivilege([PRIVILEGES.CREATE_TEST_ORDER]),
+  ...processSampleValidation,
   validationMiddleware,
   processSampleOrder
 )
@@ -49,6 +63,7 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
+  ...testOrderIdValidation,
   validationMiddleware,
   getOrderById
 )
@@ -57,6 +72,7 @@ router.get(
 router.put(
   '/:id',
   authMiddleware,
+  ...updateTestOrderValidation,
   validationMiddleware,
   updateOrder
 )
@@ -65,6 +81,7 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
+  ...testOrderIdValidation,
   validationMiddleware,
   deleteOrder
 )
@@ -76,6 +93,7 @@ router.post(
   '/:id/comments',
   authMiddleware,
   checkPrivilege([PRIVILEGES.ADD_COMMENT]),
+  ...addCommentValidation,
   validationMiddleware,
   addCommentToOrder
 )
@@ -85,6 +103,7 @@ router.put(
   '/:id/comments/:commentIndex',
   authMiddleware,
   checkPrivilege([PRIVILEGES.MODIFY_COMMENT]),
+  ...updateCommentValidation,
   validationMiddleware,
   updateCommentInOrder
 )
@@ -94,6 +113,7 @@ router.delete(
   '/:id/comments/:commentIndex',
   authMiddleware,
   checkPrivilege([PRIVILEGES.DELETE_COMMENT]),
+  ...deleteCommentValidation,
   validationMiddleware,
   deleteCommentFromOrder
 )
@@ -105,6 +125,7 @@ router.put(
   '/:id/results',
   authMiddleware,
   checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
+  ...addResultsValidation,
   validationMiddleware,
   addResultsToOrder
 )
@@ -114,6 +135,7 @@ router.post(
   '/:id/complete',
   authMiddleware,
   checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
+  ...completeTestOrderValidation,
   validationMiddleware,
   completeOrder
 )
@@ -133,6 +155,8 @@ router.get(
   '/:id/print',
   authMiddleware,
   checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]),
+  ...printTestOrderValidation,
+  validationMiddleware,
   printOrderToPDF
 )
 

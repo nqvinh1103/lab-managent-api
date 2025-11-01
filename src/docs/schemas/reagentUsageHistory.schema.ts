@@ -35,6 +35,11 @@
  *         created_at:
  *           type: string
  *           format: date-time
+ *         reagent_inventory_id:
+ *           type: string
+ *           nullable: true
+ *           description: Reference to ReagentInventory (optional for backward compatibility)
+ *           example: 507f1f77bcf86cd799439014
  *         created_by:
  *           type: string
  *           example: 507f1f77bcf86cd799439015
@@ -54,28 +59,27 @@
  *         reagent_lot_number:
  *           type: string
  *           example: LOT-2024-001
+ *         reagent_inventory_id:
+ *           type: string
+ *           nullable: true
+ *           description: Reference to ReagentInventory (optional)
+ *           example: 507f1f77bcf86cd799439014
+ *         instrument_id:
+ *           type: string
+ *           nullable: true
+ *           description: Instrument ID (or use instrument_name/barcode)
  *         instrument_name:
  *           type: string
  *           example: Hematology Analyzer X1 Updated
+ *         instrument_barcode:
+ *           type: string
+ *           nullable: true
+ *           description: Instrument barcode or serial_number
  *         test_order_barcode:
  *           type: string
  *           example: BC-ZJVP3KADG
  *         quantity_used:
  *           type: number
  *           example: 2
- *
- *     UpdateReagentUsageRequest:
- *       type: object
- *       properties:
- *         reagent_lot_number:
- *           type: string
- *         instrument_name:
- *           type: string
- *         test_order_id:
- *           type: string
- *         test_order_barcode:
- *           type: string
- *         quantity_used:
- *           type: number
  */
 

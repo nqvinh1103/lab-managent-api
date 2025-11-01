@@ -2,6 +2,7 @@ import { ObjectId } from 'mongodb';
 
 export interface IReagentUsageHistory {
   _id?: ObjectId;
+  reagent_inventory_id?: ObjectId; // Reference to ReagentInventory (optional for backward compatibility)
   reagent_lot_number: string;
   instrument_id: ObjectId;
   test_order_id?: ObjectId;

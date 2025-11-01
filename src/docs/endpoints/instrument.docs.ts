@@ -13,12 +13,35 @@
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/CreateInstrumentRequest'
- *           example:
- *             instrument_name: "Hematology Analyzer X1"
- *             instrument_type: "Hematology Analyzer"
- *             serial_number: "SN-2024-001"
- *             status: "active"
- *             is_active: true
+ *           examples:
+ *             basic:
+ *               summary: Basic instrument creation
+ *               value:
+ *                 instrument_name: "Hematology Analyzer X1"
+ *                 instrument_type: "Hematology Analyzer"
+ *                 serial_number: "SN-2024-001"
+ *                 status: "active"
+ *                 is_active: true
+ *                 mode: "ready"
+ *                 last_qc_check: "2024-01-15T10:00:00.000Z"
+ *             withReagents:
+ *               summary: Create instrument with reagents (Use Case 2)
+ *               description: Install reagents during instrument creation
+ *               value:
+ *                 instrument_name: "Hematology Analyzer X1"
+ *                 instrument_type: "Hematology Analyzer"
+ *                 serial_number: "SN-2024-001"
+ *                 status: "active"
+ *                 is_active: true
+ *                 mode: "ready"
+ *                 last_qc_check: "2024-01-15T10:00:00.000Z"
+ *                 reagents:
+ *                   - reagent_inventory_id: "507f1f77bcf86cd799439014"
+ *                     quantity: 1000
+ *                   - reagent_inventory_id: "507f1f77bcf86cd799439015"
+ *                     quantity: 500
+ *                   - reagent_inventory_id: "507f1f77bcf86cd799439016"
+ *                     quantity: 300
  *     responses:
  *       201:
  *         description: Instrument created successfully
