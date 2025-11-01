@@ -1,11 +1,14 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
 import { MESSAGES } from '../constants/messages';
 import { PrivilegeDocument } from '../models/Privilege';
 import { RoleDocument } from '../models/Role';
 import { UserDocument } from '../models/User';
+import { EmailService } from './email.service';
 import { QueryResult, toObjectId } from '../utils/database.helper';
+import { validatePasswordStrength } from '../utils/hashPassword';
 import { signToken, TokenPayload } from '../utils/jwt';
 
 export interface LoginInput {
@@ -289,6 +292,167 @@ export class AuthService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to change password'
+      };
+    }
+  }
+
+  async forgotPassword(email: string): Promise<QueryResult<boolean>> {
+    try {
+      // Find user by email
+      const user = await this.getUserCollection().findOne({ 
+        email: email.toLowerCase() 
+      });
+
+      // For security, always return success even if user doesn't exist
+      if (!user) {
+        console.log(`Password reset requested for non-existent email: ${email}`);
+        return {
+          success: true,
+          data: true
+        };
+      }
+
+      // Check if account is locked
+      if (user.is_locked) {
+        // Still return success to not reveal account status
+        return {
+          success: true,
+          data: true
+        };
+      }
+
+      // Generate secure random token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      
+      // Calculate expiration time (default: 1 hour)
+      const expiryHours = parseInt(process.env.RESET_TOKEN_EXPIRY_HOURS || '1', 10);
+      const resetTokenExpiresAt = new Date();
+      resetTokenExpiresAt.setHours(resetTokenExpiresAt.getHours() + expiryHours);
+
+      // Save token and expiration to user document
+      await this.getUserCollection().updateOne(
+        { _id: user._id },
+        { 
+          $set: { 
+            reset_token: resetToken,
+            reset_token_expires_at: resetTokenExpiresAt,
+            updated_at: new Date()
+          } 
+        }
+      );
+
+      // Send reset email
+      const emailService = new EmailService();
+      await emailService.sendPasswordResetEmail(
+        user.email,
+        user.full_name,
+        resetToken
+      );
+
+      console.log(`✅ Password reset token generated for user: ${user.email}`);
+
+      return {
+        success: true,
+        data: true
+      };
+
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to process password reset request'
+      };
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<QueryResult<boolean>> {
+    try {
+      // Validate password strength
+      const passwordValidation = validatePasswordStrength(newPassword);
+      if (!passwordValidation.isValid) {
+        return {
+          success: false,
+          error: passwordValidation.message || MESSAGES.WEAK_PASSWORD
+        };
+      }
+
+      // Find user by reset token
+      const user = await this.getUserCollection().findOne({ 
+        reset_token: token 
+      });
+
+      if (!user) {
+        return {
+          success: false,
+          error: MESSAGES.RESET_TOKEN_INVALID
+        };
+      }
+
+      // Check if token is expired
+      if (!user.reset_token_expires_at || user.reset_token_expires_at < new Date()) {
+        // Clear expired token
+        await this.getUserCollection().updateOne(
+          { _id: user._id },
+          { 
+            $unset: { 
+              reset_token: '',
+              reset_token_expires_at: ''
+            },
+            $set: { updated_at: new Date() }
+          }
+        );
+
+        return {
+          success: false,
+          error: MESSAGES.RESET_TOKEN_EXPIRED
+        };
+      }
+
+      // Check if account is locked
+      if (user.is_locked) {
+        return {
+          success: false,
+          error: MESSAGES.USER_LOCKED
+        };
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      // Update password and clear reset token
+      const result = await this.getUserCollection().updateOne(
+        { _id: user._id },
+        { 
+          $set: { 
+            password_hash: hashedPassword,
+            updated_at: new Date()
+          },
+          $unset: {
+            reset_token: '',
+            reset_token_expires_at: ''
+          }
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return {
+          success: false,
+          error: 'Failed to update password'
+        };
+      }
+
+      console.log(`✅ Password reset successfully for user: ${user.email}`);
+
+      return {
+        success: true,
+        data: true
+      };
+
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reset password'
       };
     }
   }

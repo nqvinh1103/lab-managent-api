@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { changePassword, login, logout, refreshToken } from '../../controllers/auth.controller';
+import { changePassword, forgotPassword, login, logout, refreshToken, resetPassword } from '../../controllers/auth.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
-import { changePasswordValidation } from '../../middlewares/validations/auth.validation';
+import { changePasswordValidation, forgotPasswordValidation, resetPasswordValidation } from '../../middlewares/validations/auth.validation';
 
 const router = Router();
 
@@ -22,6 +22,22 @@ router.put(
   changePasswordValidation,
   validationMiddleware,
   changePassword
+);
+
+// POST /auth/forgot-password - Request password reset
+router.post(
+  '/forgot-password',
+  forgotPasswordValidation,
+  validationMiddleware,
+  forgotPassword
+);
+
+// POST /auth/reset-password - Reset password with token
+router.post(
+  '/reset-password',
+  resetPasswordValidation,
+  validationMiddleware,
+  resetPassword
 );
 
 export default router;
