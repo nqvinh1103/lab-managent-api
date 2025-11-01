@@ -3,7 +3,7 @@ export const getPasswordResetEmailTemplate = (
   resetToken: string,
   systemName: string = 'Lab Management System'
 ): string => {
-  const resetUrl = `${process.env.FRONTEND_RESET_PASSWORD_URL || process.env.RESET_PASSWORD_URL || 'http://localhost:3000/reset-password'}?token=${resetToken}`;
+  const resetUrl = `http://localhost:5173/reset-password?token=${resetToken}`;
   const expiryHours = parseInt(process.env.RESET_TOKEN_EXPIRY_HOURS || '1', 10);
 
   return `
