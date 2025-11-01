@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
-import { CreateTestOrderInput, UpdateTestOrderInput } from '../models/TestOrder';
+import { CreateTestOrderInput, UpdateTestOrderWithPatientInput } from '../models/TestOrder';
 import {
   addComment,
   addTestResults,
@@ -110,6 +110,9 @@ export const createOrder = async (req: Request, res: Response) => {
 export const getOrders = async (_req: Request, res: Response) => {
   try {
     const items = await getAllTestOrders();
+    if (!items || items.length === 0) {
+      return res.json({ success: true, data: [], message: 'No Data' });
+    }
     res.json({ success: true, data: items });
   } catch (error) {
     console.error(error);
@@ -152,7 +155,12 @@ export const getOrderById = async (req: Request, res: Response) => {
   try {
     const id = req.params.id;
     const item = await getTestOrderById(id);
-    if (!item) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (!item) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Test order not found or does not contain any data to display' 
+      });
+    }
     res.json({ success: true, data: item });
   } catch (error) {
     console.error(error);
@@ -190,7 +198,7 @@ export const getOrderById = async (req: Request, res: Response) => {
 export const updateOrder = async (req: Request, res: Response) => {
   try {
     const id = req.params.id;
-    const data: UpdateTestOrderInput = req.body;
+    const data: UpdateTestOrderWithPatientInput = req.body;
     const updated = await updateTestOrder(id, data);
     if (!updated) return res.status(404).json({ success: false, message: 'Order not found or update failed' });
     

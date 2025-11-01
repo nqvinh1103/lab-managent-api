@@ -50,6 +50,15 @@ export interface CreateTestOrderInput {
 
 export type UpdateTestOrderInput = Partial<Omit<ITestOrder, '_id' | 'created_at' | 'updated_at' | 'test_results' | 'comments'>>;
 
+// Extended type for updating test order that may include patient fields
+export type UpdateTestOrderWithPatientInput = UpdateTestOrderInput & {
+  full_name?: string;
+  date_of_birth?: Date;
+  gender?: 'male' | 'female';
+  phone_number?: string;
+  address?: string;
+};
+
 export type AddTestResultInput = Omit<ITestResult, 'measured_at'>;
 export type AddTestCommentInput = Omit<ITestComment, 'created_at' | 'updated_at'>;
 

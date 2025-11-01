@@ -11,7 +11,8 @@
     "lint:fix": "eslint . --fix",
     "prettier": "prettier --check .",
     "prettier:fix": "prettier --write .",
-    "seed:srs": "tsx src/seeds/srs-privileges.seed.ts"
+    "seed:srs": "tsx src/seeds/srs-privileges.seed.ts",
+    "seed:reagents": "tsx src/scripts/seedReagents.ts"
   },
   "keywords": [],
   "author": "",

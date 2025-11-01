@@ -3,11 +3,12 @@ import { ObjectId } from 'mongodb';
 import {
   createReagentUsageHistory,
   getAllReagentUsageHistory,
-  getReagentUsageHistoryById,
-  updateReagentUsageHistory,
-  deleteReagentUsageHistory,
+  getReagentUsageHistoryById
 } from '../services/reagentUsageHistory.service';
 import { CreateReagentUsageHistoryInput } from '../models/ReagentUsageHistory';
+import { HTTP_STATUS } from '../constants/httpStatus';
+import { MESSAGES } from '../constants/messages';
+import { ReagentUsageHistoryService } from '../services/reagentUsageHistory.service';
 
 /**
  * CREATE
@@ -51,33 +52,7 @@ export const getUsageById = async (req: Request, res: Response) => {
   }
 };
 
-export const updateUsage = async (req: Request, res: Response) => {
-  try {
-    const id = req.params.id;
-    const data = req.body;
-    const updated = await updateReagentUsageHistory(id, data);
-    if (!updated) return res.status(404).json({ success: false, message: 'Not found or update failed' });
-    res.json({ success: true, data: updated });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to update reagent usage history' });
-  }
-};
-
-export const deleteUsage = async (req: Request, res: Response) => {
-  try {
-    const id = req.params.id;
-    const ok = await deleteReagentUsageHistory(id);
-    if (!ok) return res.status(404).json({ success: false, message: 'Not found or delete failed' });
-    res.json({ success: true, message: 'Deleted' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to delete reagent usage history' });
-  }
-};
-import { HTTP_STATUS } from '../constants/httpStatus';
-import { MESSAGES } from '../constants/messages';
-import { ReagentUsageHistoryService } from '../services/reagentUsageHistory.service';
+// Note: updateUsage and deleteUsage removed - ReagentUsageHistory is immutable (append-only) per SRS 3.3.2.2
 
 let service: ReagentUsageHistoryService | null = null;
 

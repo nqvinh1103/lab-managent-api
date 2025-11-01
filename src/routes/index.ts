@@ -7,8 +7,9 @@ import parameterRoutes from './modules/parameter.route'
 import patientRoutes from './modules/patient.route'
 import privilegeRoutes from './modules/privilege.route'
 import rawTestResultRoutes from './modules/rawTestResult.route'
+import reagentRoutes from './modules/reagent.route'
+import reagentInventoryRoutes from './modules/reagentInventory.route'
 import { default as reagentUsageHistoryRoutes, default as reagentUsageRoutes } from './modules/reagentUsageHistory.route'
-import reagentVendorSupplyRoutes from './modules/reagentVendorSupply.route'
 import roleRoutes from './modules/role.route'
 import testOrderRoutes from './modules/testOrder.route'
 import testResultRoutes from './modules/testResult.route'
@@ -45,8 +46,11 @@ router.use('/instruments', instrumentRoutes)
 // Instrument Reagent routes
 router.use('/instrument-reagents', instrumentReagentRoutes)
 
-// Reagent Vendor Supply routes
-router.use('/reagent-vendor-supply', reagentVendorSupplyRoutes)
+// Reagent Master routes (SRS 2.5)
+router.use('/reagents', reagentRoutes)
+
+// Reagent Inventory routes (Warehouse Management)
+router.use('/reagent-inventory', reagentInventoryRoutes)
 
 // Reagent Usage History routes
 router.use('/reagent-usage-history', reagentUsageHistoryRoutes)

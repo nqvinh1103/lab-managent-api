@@ -10,6 +10,12 @@ import {
 import { authMiddleware, checkPrivilege } from '~/middlewares/auth.middleware';
 import { validationMiddleware } from '~/middlewares/validation.middleware';
 import { PRIVILEGES } from '~/constants/privileges';
+import {
+  createInstrumentReagentValidation,
+  instrumentReagentIdValidation,
+  updateInstrumentReagentValidation,
+  updateReagentStatusValidation
+} from '../../middlewares/validations/instrumentReagent.validation';
 
 const router = Router();
 
@@ -18,6 +24,8 @@ router.post(
   '/',
   authMiddleware,
   checkPrivilege([PRIVILEGES.ADD_REAGENTS]),
+  createInstrumentReagentValidation,
+  validationMiddleware,
   createReagentController
 );
 
@@ -32,6 +40,7 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
+  instrumentReagentIdValidation,
   validationMiddleware,
   getReagentByIdController
 );
@@ -41,6 +50,8 @@ router.put(
   '/:id',
   authMiddleware,
   checkPrivilege([PRIVILEGES.MODIFY_REAGENTS]),
+  instrumentReagentIdValidation,
+  updateInstrumentReagentValidation,
   validationMiddleware,
   updateReagentController
 );
@@ -50,6 +61,8 @@ router.patch(
   '/:id/status',
   authMiddleware,
   checkPrivilege([PRIVILEGES.MODIFY_REAGENTS]),
+  instrumentReagentIdValidation,
+  updateReagentStatusValidation,
   validationMiddleware,
   updateReagentStatusController
 );
@@ -59,6 +72,7 @@ router.delete(
   '/:id',
   authMiddleware,
   checkPrivilege([PRIVILEGES.DELETE_REAGENTS]),
+  instrumentReagentIdValidation,
   validationMiddleware,
   deleteReagentController
 );

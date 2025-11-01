@@ -1,18 +1,18 @@
+import * as ExcelJS from "exceljs";
 import { ObjectId } from "mongodb";
 import { getCollection } from "../config/database";
 import {
+  CreateTestOrderInput,
   ITestOrder,
   TestOrderDocument,
-  CreateTestOrderInput,
-  UpdateTestOrderInput,
+  UpdateTestOrderWithPatientInput
 } from "../models/TestOrder";
-import * as ExcelJS from "exceljs";
 
 const COLLECTION = "test_orders";
 const PATIENT_COLLECTION = 'patients';
 
 export const createTestOrder = async (
-  input: CreateTestOrderInput & { patient_email: string },
+  input: CreateTestOrderInput & { patient_email: string; instrument_name?: string },
   createdBy: string | ObjectId
 ): Promise<TestOrderDocument> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
@@ -80,10 +80,10 @@ export const getAllTestOrders = async (): Promise<any[]> => {
     .aggregate([
       {
         $lookup: {
-          from: "patients",              // Tên collection chứa thông tin bệnh nhân
-          localField: "patient_id",      // Field trong test_orders
-          foreignField: "_id",           // Field trong patients
-          as: "patient_info"             // Tên field mới chứa thông tin bệnh nhân
+          from: "patients",
+          localField: "patient_id",
+          foreignField: "_id",
+          as: "patient_info"
         }
       },
       {
@@ -93,14 +93,52 @@ export const getAllTestOrders = async (): Promise<any[]> => {
         }
       },
       {
+        $lookup: {
+          from: "users",
+          localField: "created_by",
+          foreignField: "_id",
+          as: "created_by_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$created_by_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "run_by",
+          foreignField: "_id",
+          as: "run_by_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$run_by_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
         $addFields: {
-          patient_email: "$patient_info.email" // Thêm field mới là email
+          patient_email: "$patient_info.email",
+          patient_name: "$patient_info.full_name",
+          patient_gender: "$patient_info.gender",
+          patient_phone: "$patient_info.phone_number",
+          created_by_name: "$created_by_user.full_name",
+          run_by_name: "$run_by_user.full_name"
         }
       },
       {
         $project: {
-          patient_info: 0, // Ẩn thông tin chi tiết bệnh nhân (chỉ giữ email)
+          patient_info: 0,
+          created_by_user: 0,
+          run_by_user: 0
         }
+      },
+      {
+        $sort: { created_at: -1 }  // Sort by most recent first (descending)
       }
     ])
     .toArray();
@@ -126,8 +164,51 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
           }
         },
         { $unwind: { path: "$patient_info", preserveNullAndEmptyArrays: true } },
-        { $addFields: { patient_email: "$patient_info.email" } },
-        { $project: { patient_info: 0 } }
+        {
+          $lookup: {
+            from: "users",
+            localField: "created_by",
+            foreignField: "_id",
+            as: "created_by_user"
+          }
+        },
+        {
+          $unwind: {
+            path: "$created_by_user",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "run_by",
+            foreignField: "_id",
+            as: "run_by_user"
+          }
+        },
+        {
+          $unwind: {
+            path: "$run_by_user",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $addFields: {
+            patient_email: "$patient_info.email",
+            patient_name: "$patient_info.full_name",
+            patient_gender: "$patient_info.gender",
+            patient_phone: "$patient_info.phone_number",
+            created_by_name: "$created_by_user.full_name",
+            run_by_name: "$run_by_user.full_name"
+          }
+        },
+        {
+          $project: {
+            patient_info: 0,
+            created_by_user: 0,
+            run_by_user: 0
+          }
+        }
       ])
       .toArray();
 
@@ -140,21 +221,60 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
 
 export const updateTestOrder = async (
   id: string,
-  data: UpdateTestOrderInput
+  data: UpdateTestOrderWithPatientInput
 ): Promise<TestOrderDocument | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
+  const patientCollection = getCollection<any>(PATIENT_COLLECTION);
   const now = new Date();
 
   try {
     const _id = new ObjectId(id);
-    await collection.updateOne(
-      { _id },
-      { $set: { ...data, updated_at: now } }
-    );
+    
+    // Get test order to access patient_id
+    const testOrder = await collection.findOne({ _id });
+    if (!testOrder) {
+      return null;
+    }
+
+    // Separate patient fields from test order fields
+    const patientFields = ['full_name', 'date_of_birth', 'gender', 'phone_number', 'address'];
+    const patientUpdateData: any = {};
+    const testOrderUpdateData: any = { updated_at: now };
+
+    Object.keys(data).forEach((key) => {
+      if (patientFields.includes(key)) {
+        patientUpdateData[key] = (data as any)[key];
+      } else if (key !== '_id') {
+        testOrderUpdateData[key] = (data as any)[key];
+      }
+    });
+
+    // Update patient info if any patient fields provided
+    if (Object.keys(patientUpdateData).length > 0 && testOrder.patient_id) {
+      await patientCollection.updateOne(
+        { _id: new ObjectId(String(testOrder.patient_id)) },
+        { 
+          $set: { 
+            ...patientUpdateData, 
+            updated_at: now,
+            updated_by: testOrder.updated_by  // Keep the last updater for patient
+          } 
+        }
+      );
+    }
+
+    // Update test order
+    if (Object.keys(testOrderUpdateData).length > 1) { // More than just updated_at
+      await collection.updateOne(
+        { _id },
+        { $set: testOrderUpdateData }
+      );
+    }
 
     const updated = await collection.findOne({ _id });
     return updated as TestOrderDocument | null;
   } catch (err) {
+    console.error('Error updating test order:', err);
     return null;
   }
 }
@@ -571,7 +691,7 @@ export const exportToExcel = async (filters: {
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
-    return buffer as Buffer;
+    return Buffer.from(buffer);
   } catch (err) {
     console.error('Error in exportToExcel:', err);
     throw new Error('Failed to export to Excel');
