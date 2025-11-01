@@ -7,6 +7,8 @@ export const MESSAGES = {
   LOGIN_SUCCESS: 'Login successful',
   LOGOUT_SUCCESS: 'Logout successful',
   REGISTER_SUCCESS: 'Registration successful',
+  FORGOT_PASSWORD_SUCCESS: 'If email exists, reset link has been sent to your email',
+  RESET_PASSWORD_SUCCESS: 'Password reset successful',
 
   // Error messages
   INTERNAL_ERROR: 'Internal server error',
@@ -18,6 +20,8 @@ export const MESSAGES = {
   INVALID_CREDENTIALS: 'Invalid credentials',
   TOKEN_EXPIRED: 'Token has expired',
   TOKEN_INVALID: 'Invalid token',
+  RESET_TOKEN_INVALID: 'Invalid or expired reset token',
+  RESET_TOKEN_EXPIRED: 'Reset token has expired',
   USER_NOT_FOUND: 'User not found',
   INVALID_EMAIL: 'Invalid email format',
   WEAK_PASSWORD: 'Password is too weak',

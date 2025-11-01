@@ -14,6 +14,8 @@ export interface IUser {
   is_locked: boolean;
   last_activity: Date;
   role_ids: ObjectId[];
+  reset_token?: string;
+  reset_token_expires_at?: Date;
   created_at: Date;
   created_by: ObjectId;
   updated_at: Date;

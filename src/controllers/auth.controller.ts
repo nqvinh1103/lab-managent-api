@@ -153,3 +153,89 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
   }
 };
 
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    // Validate input
+    if (!email) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: MESSAGES.VALIDATION_ERROR,
+        error: 'Email is required'
+      });
+      return;
+    }
+
+    // Call auth service
+    const result = await authService.forgotPassword(email);
+
+    if (!result.success) {
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: MESSAGES.INTERNAL_ERROR,
+        error: result.error
+      });
+      return;
+    }
+
+    // Always return success (security: don't reveal if email exists)
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: MESSAGES.FORGOT_PASSWORD_SUCCESS
+    });
+
+  } catch (error) {
+    console.error('Forgot password controller error:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: MESSAGES.INTERNAL_ERROR,
+      error: error instanceof Error ? error.message : 'Failed to process request'
+    });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, newPassword } = req.body;
+
+    // Validate input
+    if (!token || !newPassword) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: MESSAGES.VALIDATION_ERROR,
+        error: 'Token and new password are required'
+      });
+      return;
+    }
+
+    // Call auth service
+    const result = await authService.resetPassword(token, newPassword);
+
+    if (!result.success) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: result.error === MESSAGES.RESET_TOKEN_EXPIRED || result.error === MESSAGES.RESET_TOKEN_INVALID
+          ? result.error
+          : MESSAGES.VALIDATION_ERROR,
+        error: result.error
+      });
+      return;
+    }
+
+    // Return success response
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: MESSAGES.RESET_PASSWORD_SUCCESS
+    });
+
+  } catch (error) {
+    console.error('Reset password controller error:', error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: MESSAGES.INTERNAL_ERROR,
+      error: error instanceof Error ? error.message : 'Failed to reset password'
+    });
+  }
+};
+
