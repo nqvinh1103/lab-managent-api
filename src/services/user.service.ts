@@ -16,8 +16,57 @@ export class UserService {
     return role?._id || null;
   }
 
+  private generateIdentityNumber(): string {
+    // Generate a unique identity number format: ID-YYYYMMDD-XXXXX
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    return `ID-${year}${month}${day}-${random}`;
+  }
+
+  private async checkDuplicateFields(email: string, phone?: string, excludeUserId?: ObjectId): Promise<{ isDuplicate: boolean; field?: string; }> {
+    // Check email
+    const emailUser = await this.collection.findOne({ 
+      email: email.toLowerCase(),
+      ...excludeUserId && { _id: { $ne: excludeUserId } }
+    });
+    if (emailUser) {
+      return { isDuplicate: true, field: 'email' };
+    }
+
+    // Check phone if provided
+    if (phone) {
+      const phoneUser = await this.collection.findOne({ 
+        phone_number: phone,
+        ...excludeUserId && { _id: { $ne: excludeUserId } }
+      });
+      if (phoneUser) {
+        return { isDuplicate: true, field: 'phone_number' };
+      }
+    }
+
+    return { isDuplicate: false };
+  }
+
   async create(userData: CreateUserInput): Promise<QueryResult<UserDocument>> {
     try {
+      // Check for duplicate email and phone
+      const { isDuplicate, field } = await this.checkDuplicateFields(userData.email, userData.phone_number);
+      if (isDuplicate) {
+        return {
+          success: false,
+          error: field === 'email' ? 'Email already exists' : 'Phone number already exists',
+          statusCode: 409 // Conflict status code
+        };
+      }
+
+      // Generate identity number if not provided
+      if (!userData.identity_number) {
+        userData.identity_number = this.generateIdentityNumber();
+      }
+
       // Validate roles if provided
       const roleIds: ObjectId[] = []
       if (userData.role_ids && userData.role_ids.length > 0) {
@@ -150,8 +199,25 @@ export class UserService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: 400
         };
+      }
+
+      // Check for duplicate email/phone if being updated
+      if (updateData.email || updateData.phone_number) {
+        const { isDuplicate, field } = await this.checkDuplicateFields(
+          updateData.email || '', 
+          updateData.phone_number,
+          objectId // Exclude current user from duplicate check
+        );
+        if (isDuplicate) {
+          return {
+            success: false,
+            error: field === 'email' ? 'Email already exists' : 'Phone number already exists',
+            statusCode: 409
+          };
+        }
       }
 
       // Hash password if it's being updated
