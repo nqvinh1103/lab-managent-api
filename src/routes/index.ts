@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import authRoutes from './modules/auth.route'
 import configurationRoutes from './modules/configuration.route'
+import eventLogRoutes from './modules/eventLog.route'
 import instrumentRoutes from './modules/instrument.route'
 import instrumentReagentRoutes from './modules/instrumentReagent.route'
 import parameterRoutes from './modules/parameter.route'
@@ -60,7 +61,11 @@ router.use('/reagent-usage', reagentUsageRoutes);
 
 // TestResult routes
 router.use('/test-results', testResultRoutes);
+
 // Monitoring routes (Raw Test Results)
 router.use('/monitoring/raw-results', rawTestResultRoutes)
+
+// Event Log routes
+router.use('/event-logs', eventLogRoutes)
 
 export default router
