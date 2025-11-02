@@ -25,7 +25,21 @@ export const createTestOrder = async (
   if (!patient) {
     return {
       success: false,
-      error: `Patient with email ot found`,
+      error: `Patient with email not found`,
+      statusCode: 400
+    };
+  }
+
+  // Check for existing pending test orders
+  const existingPendingOrder = await collection.findOne({
+    patient_id: new ObjectId(patient._id),
+    status: "pending"
+  });
+
+  if (existingPendingOrder) {
+    return {
+      success: false,
+      error: `Patient already has a pending test order. Please complete the existing order before creating a new one.`,
       statusCode: 400
     };
   }
