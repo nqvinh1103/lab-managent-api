@@ -1,13 +1,14 @@
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
 import {
-  CreateInstrumentReagentInput,
-  IInstrumentReagent,
-  InstrumentReagentDocument,
-  UpdateInstrumentReagentInput
+    CreateInstrumentReagentInput,
+    IInstrumentReagent,
+    InstrumentReagentDocument,
+    UpdateInstrumentReagentInput
 } from '../models/InstrumentReagent';
 import { toObjectId } from '../utils/database.helper';
 import { logEvent } from '../utils/eventLog.helper';
+import { withTransaction } from '../utils/transaction.helper';
 import { ReagentService } from './reagent.service';
 import { ReagentInventoryService } from './reagentInventory.service';
 
@@ -34,7 +35,7 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
     throw new Error('Quantity must be greater than zero');
   }
 
-  // Get inventory and validate
+  // Get inventory and validate (outside transaction for initial checks)
   const inventoryService = new ReagentInventoryService();
   const inventoryResult = await inventoryService.findById(data.reagent_inventory_id);
   
@@ -44,13 +45,7 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
 
   const inventory = inventoryResult.data;
 
-  // Validate inventory status and stock
-  const validationResult = await inventoryService.validateForInstallation(data.reagent_inventory_id, data.quantity);
-  if (!validationResult.success) {
-    throw new Error(validationResult.error || 'Inventory validation failed');
-  }
-
-  // Get reagent master data
+  // Get reagent master data (outside transaction for initial checks)
   const reagentService = new ReagentService();
   const reagentResult = await reagentService.findById(inventory.reagent_id.toString());
   
@@ -60,61 +55,57 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
 
   const reagent = reagentResult.data;
 
-  // quantity_remaining always equals quantity when first installed
-  const quantity_remaining = data.quantity;
+  // Execute within transaction: insert InstrumentReagent + atomic stock deduction
+  // Transaction ensures both operations succeed or fail together
+  const newDoc = await withTransaction(async (session) => {
+    // Atomic stock deduction - prevents race conditions
+    // This will return null if insufficient stock, causing transaction to fail
+    const updatedInventory = await inventoryService.atomicDeductStock(
+      data.reagent_inventory_id,
+      data.quantity,
+      session
+    );
 
-  // Populate master data and inventory data
-  const newDoc: IInstrumentReagent = {
-    instrument_id: data.instrument_id,
-    reagent_inventory_id: data.reagent_inventory_id,
-    reagent_id: inventory.reagent_id,
-    // Master data from Reagent
-    reagent_name: reagent.reagent_name,
-    description: reagent.description,
-    usage_per_run_min: reagent.usage_per_run_min,
-    usage_per_run_max: reagent.usage_per_run_max,
-    usage_unit: reagent.usage_unit,
-    // Batch info from Inventory
-    reagent_lot_number: inventory.lot_number,
-    expiration_date: inventory.expiration_date,
-    // Installation info
-    quantity: data.quantity,
-    quantity_remaining,
-    installed_at: data.installed_at || now,
-    installed_by: data.installed_by || userObjectId,
-    status: 'in_use', // Default status when installing
-    created_by: userObjectId,
-    _id: new ObjectId(),
-    created_at: now
-  };
-
-  // Insert InstrumentReagent first
-  await collection.insertOne(newDoc);
-
-  // Update inventory stock: quantity_in_stock -= quantity_installed
-  // If this fails, rollback by deleting the InstrumentReagent record to maintain consistency
-  try {
-    const newStock = inventory.quantity_in_stock - data.quantity;
-    const updateStockResult = await inventoryService.updateStock(data.reagent_inventory_id, { quantity_in_stock: newStock });
-    
-    if (!updateStockResult.success) {
-      // Rollback: Delete the InstrumentReagent record that was just created
-      await collection.deleteOne({ _id: newDoc._id });
-      throw new Error(`Failed to update inventory stock: ${updateStockResult.error || 'Unknown error'}`);
+    if (!updatedInventory) {
+      throw new Error(`Insufficient stock. Available stock is less than requested quantity (${data.quantity})`);
     }
-  } catch (stockError) {
-    // Rollback: Delete the InstrumentReagent record if it exists
-    try {
-      await collection.deleteOne({ _id: newDoc._id });
-    } catch (deleteError) {
-      // Log but continue with original error
-      console.error('⚠️ Failed to rollback InstrumentReagent after stock update failure:', deleteError);
-    }
-    // Re-throw the original error to fail the installation
-    throw stockError instanceof Error ? stockError : new Error('Failed to update inventory stock');
-  }
 
-  // Log event for audit trail (SRS 3.6.2.1)
+    // quantity_remaining always equals quantity when first installed
+    const quantity_remaining = data.quantity;
+
+    // Populate master data and inventory data
+    const docToInsert: IInstrumentReagent = {
+      instrument_id: data.instrument_id,
+      reagent_inventory_id: data.reagent_inventory_id,
+      reagent_id: inventory.reagent_id,
+      // Master data from Reagent
+      reagent_name: reagent.reagent_name,
+      description: reagent.description,
+      usage_per_run_min: reagent.usage_per_run_min,
+      usage_per_run_max: reagent.usage_per_run_max,
+      usage_unit: reagent.usage_unit,
+      // Batch info from Inventory
+      reagent_lot_number: inventory.lot_number,
+      expiration_date: inventory.expiration_date,
+      // Installation info
+      quantity: data.quantity,
+      quantity_remaining,
+      installed_at: data.installed_at || now,
+      installed_by: data.installed_by || userObjectId,
+      status: 'in_use', // Default status when installing
+      created_by: userObjectId,
+      _id: new ObjectId(),
+      created_at: now
+    };
+
+    // Insert InstrumentReagent within transaction
+    await collection.insertOne(docToInsert, { session });
+
+    return docToInsert;
+  });
+
+  // Log event for audit trail (SRS 3.6.2.1) - outside transaction
+  // Event logging failure should not fail the installation
   try {
     // Handle expiration_date: could be Date object or string from MongoDB
     const expirationDate = inventory.expiration_date instanceof Date 

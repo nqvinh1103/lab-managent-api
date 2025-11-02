@@ -1,6 +1,7 @@
 import * as ExcelJS from "exceljs";
 import { ObjectId } from "mongodb";
 import { getCollection } from "../config/database";
+import { withTransaction } from "../utils/transaction.helper";
 import {
   CreateTestOrderInput,
   ITestOrder,
@@ -230,7 +231,7 @@ export const updateTestOrder = async (
   try {
     const _id = new ObjectId(id);
     
-    // Get test order to access patient_id
+    // Get test order to access patient_id (outside transaction for initial check)
     const testOrder = await collection.findOne({ _id });
     if (!testOrder) {
       return null;
@@ -249,28 +250,43 @@ export const updateTestOrder = async (
       }
     });
 
-    // Update patient info if any patient fields provided
-    if (Object.keys(patientUpdateData).length > 0 && testOrder.patient_id) {
-      await patientCollection.updateOne(
-        { _id: new ObjectId(String(testOrder.patient_id)) },
-        { 
-          $set: { 
-            ...patientUpdateData, 
-            updated_at: now,
-            updated_by: testOrder.updated_by  // Keep the last updater for patient
-          } 
-        }
-      );
+    // Check if updates are needed
+    const hasPatientUpdates = Object.keys(patientUpdateData).length > 0 && testOrder.patient_id;
+    const hasOrderUpdates = Object.keys(testOrderUpdateData).length > 1; // More than just updated_at
+
+    if (!hasPatientUpdates && !hasOrderUpdates) {
+      // No updates needed, return current order
+      return testOrder as TestOrderDocument;
     }
 
-    // Update test order
-    if (Object.keys(testOrderUpdateData).length > 1) { // More than just updated_at
-      await collection.updateOne(
-        { _id },
-        { $set: testOrderUpdateData }
-      );
-    }
+    // Execute updates within transaction: update Patient + update TestOrder atomically
+    await withTransaction(async (session) => {
+      // Update patient info if any patient fields provided
+      if (hasPatientUpdates) {
+        await patientCollection.updateOne(
+          { _id: new ObjectId(String(testOrder.patient_id)) },
+          { 
+            $set: { 
+              ...patientUpdateData, 
+              updated_at: now,
+              updated_by: testOrder.updated_by  // Keep the last updater for patient
+            } 
+          },
+          { session }
+        );
+      }
 
+      // Update test order
+      if (hasOrderUpdates) {
+        await collection.updateOne(
+          { _id },
+          { $set: testOrderUpdateData },
+          { session }
+        );
+      }
+    });
+
+    // Fetch updated order
     const updated = await collection.findOne({ _id });
     return updated as TestOrderDocument | null;
   } catch (err) {
@@ -549,7 +565,7 @@ export const completeTestOrder = async (
   try {
     const _id = new ObjectId(orderId);
 
-    // Get order first
+    // Get order first (outside transaction for initial checks)
     const order = await collection.findOne({ _id });
     if (!order) {
       throw new Error('Test order not found');
@@ -559,53 +575,63 @@ export const completeTestOrder = async (
       throw new Error('Test order already completed');
     }
 
-    // Update order status
-    await collection.updateOne(
-      { _id },
-      {
-        $set: {
-          status: 'completed',
-          run_by: runBy,
-          run_at: now,
-          updated_at: now,
-          updated_by: runBy
-        }
-      }
-    );
+    // Execute within transaction: update TestOrder status + update InstrumentReagent quantity + insert ReagentUsageHistory
+    // Transaction ensures all operations succeed or fail together
+    await withTransaction(async (session) => {
+      // Update order status
+      await collection.updateOne(
+        { _id },
+        {
+          $set: {
+            status: 'completed',
+            run_by: runBy,
+            run_at: now,
+            updated_at: now,
+            updated_by: runBy
+          }
+        },
+        { session }
+      );
 
-    // Track reagent usage if provided
-    if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-      for (const usage of reagentUsage) {
-        // Find reagent
-        const reagent = await reagentCollection.findOne({
-          reagent_lot_number: usage.reagent_lot_number,
-          instrument_id: order.instrument_id
-        });
-
-        if (reagent) {
-          // Update quantity_remaining
-          await reagentCollection.updateOne(
-            { _id: reagent._id },
+      // Track reagent usage if provided
+      if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
+        for (const usage of reagentUsage) {
+          // Find reagent (within transaction)
+          const reagent = await reagentCollection.findOne(
             {
-              $inc: { quantity_remaining: -usage.quantity_used }
-            }
+              reagent_lot_number: usage.reagent_lot_number,
+              instrument_id: order.instrument_id
+            },
+            { session }
           );
 
-          // Create usage history
-          await usageHistoryCollection.insertOne({
-            reagent_lot_number: usage.reagent_lot_number,
-            instrument_id: order.instrument_id,
-            test_order_id: _id,
-            quantity_used: usage.quantity_used,
-            used_by: runBy,
-            used_at: now,
-            created_at: now,
-            created_by: runBy
-          });
+          if (reagent) {
+            // Update quantity_remaining (within transaction)
+            await reagentCollection.updateOne(
+              { _id: reagent._id },
+              {
+                $inc: { quantity_remaining: -usage.quantity_used }
+              },
+              { session }
+            );
+
+            // Create usage history (within transaction)
+            await usageHistoryCollection.insertOne({
+              reagent_lot_number: usage.reagent_lot_number,
+              instrument_id: order.instrument_id,
+              test_order_id: _id,
+              quantity_used: usage.quantity_used,
+              used_by: runBy,
+              used_at: now,
+              created_at: now,
+              created_by: runBy
+            }, { session });
+          }
         }
       }
-    }
+    });
 
+    // Fetch updated order
     const updated = await collection.findOne({ _id });
     return updated as TestOrderDocument | null;
   } catch (err) {

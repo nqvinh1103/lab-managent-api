@@ -1,10 +1,13 @@
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
 import { CreateRoleInput, RoleDocument, UpdateRoleInput } from '../models/Role';
+import { RolePrivilegeDocument } from '../models/RolePrivilege';
 import { createPaginationOptions, createSortOptions, OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
+import { withTransaction } from '../utils/transaction.helper';
 
 export class RoleService {
   private collection = getCollection<RoleDocument>('roles');
+  private rolePrivilegeCollection = getCollection<RolePrivilegeDocument>('role_privileges');
 
   async create(roleData: CreateRoleInput, userId: string | ObjectId): Promise<QueryResult<RoleDocument>> {
     try {
@@ -28,13 +31,44 @@ export class RoleService {
         updated_at: new Date()
       };
 
-      const result = await this.collection.insertOne(roleToInsert as RoleDocument);
-      
-      if (result.insertedId) {
-        const createdRole = await this.collection.findOne({ _id: result.insertedId });
+      let createdRole: RoleDocument | null = null;
+
+      // If role has privileges, sync RolePrivilege collection in transaction
+      if (privilegeIds.length > 0) {
+        await withTransaction(async (session) => {
+          // Insert Role document
+          const result = await this.collection.insertOne(roleToInsert as RoleDocument, { session });
+          
+          if (!result.insertedId) {
+            throw new Error('Failed to create role');
+          }
+
+          // Create RolePrivilege records
+          const rolePrivilegeDocs = privilegeIds.map(privilegeId => ({
+            role_id: result.insertedId,
+            privilege_id: privilegeId,
+            created_by: userObjectId,
+            created_at: new Date()
+          }));
+
+          await this.rolePrivilegeCollection.insertMany(rolePrivilegeDocs as RolePrivilegeDocument[], { session });
+
+          // Fetch created role within transaction
+          createdRole = await this.collection.findOne({ _id: result.insertedId }, { session });
+        });
+      } else {
+        // No privileges, just insert role
+        const result = await this.collection.insertOne(roleToInsert as RoleDocument);
+        
+        if (result.insertedId) {
+          createdRole = await this.collection.findOne({ _id: result.insertedId });
+        }
+      }
+
+      if (createdRole) {
         return {
           success: true,
-          data: createdRole!
+          data: createdRole
         };
       }
 
@@ -122,24 +156,65 @@ export class RoleService {
         };
       }
 
-      // Convert privilege_ids from strings to ObjectId if provided
+      // Check if privilege_ids is being updated
+      const hasPrivilegeIdsUpdate = 'privilege_ids' in updateData && updateData.privilege_ids !== undefined;
+
       const updateDoc: any = {
         ...updateData,
         updated_by: userObjectId,
         updated_at: new Date()
       };
-      
-      if (updateData.privilege_ids) {
-        updateDoc.privilege_ids = updateData.privilege_ids
+
+      let result: RoleDocument | null = null;
+
+      if (hasPrivilegeIdsUpdate) {
+        // Update Role.privilege_ids + sync RolePrivilege collection in transaction
+        const privilegeIds = (updateData.privilege_ids || [])
           .map(id => toObjectId(id))
           .filter((id): id is ObjectId => id !== null);
-      }
 
-      const result = await this.collection.findOneAndUpdate(
-        { _id: objectId },
-        { $set: updateDoc },
-        { returnDocument: 'after' }
-      );
+        updateDoc.privilege_ids = privilegeIds;
+
+        result = await withTransaction(async (session) => {
+          // Update role document
+          const updatedRole = await this.collection.findOneAndUpdate(
+            { _id: objectId },
+            { $set: updateDoc },
+            { session, returnDocument: 'after' }
+          );
+
+          if (!updatedRole) {
+            throw new Error('Role not found');
+          }
+
+          // Delete all existing RolePrivilege records for this role
+          await this.rolePrivilegeCollection.deleteMany(
+            { role_id: objectId },
+            { session }
+          );
+
+          // Insert new RolePrivilege records
+          if (privilegeIds.length > 0) {
+            const rolePrivilegeDocs = privilegeIds.map(privilegeId => ({
+              role_id: objectId,
+              privilege_id: privilegeId,
+              created_by: userObjectId,
+              created_at: new Date()
+            }));
+            await this.rolePrivilegeCollection.insertMany(rolePrivilegeDocs as RolePrivilegeDocument[], { session });
+          }
+
+          return updatedRole;
+        });
+      } else {
+        // No privilege_ids update, just update role document
+        const resultUpdate = await this.collection.findOneAndUpdate(
+          { _id: objectId },
+          { $set: updateDoc },
+          { returnDocument: 'after' }
+        );
+        result = resultUpdate;
+      }
 
       if (!result) {
         return {
@@ -220,17 +295,38 @@ export class RoleService {
         };
       }
 
-      const result = await this.collection.updateOne(
-        { _id: roleObjectId },
-        { 
-          $addToSet: { privilege_ids: privilegeObjectId },
-          $set: { updated_at: new Date() }
-        }
-      );
+      // Use transaction to ensure Role.privilege_ids and RolePrivilege collection stay in sync
+      let modifiedCount = 0;
+      await withTransaction(async (session) => {
+        // Update privilege_ids in roles collection
+        const result = await this.collection.updateOne(
+          { _id: roleObjectId },
+          { 
+            $addToSet: { privilege_ids: privilegeObjectId },
+            $set: { updated_at: new Date() }
+          },
+          { session }
+        );
+        modifiedCount = result.modifiedCount || 0;
+
+        // Create record in role_privileges collection if not exists
+        await this.rolePrivilegeCollection.updateOne(
+          { role_id: roleObjectId, privilege_id: privilegeObjectId },
+          { 
+            $set: { 
+              role_id: roleObjectId, 
+              privilege_id: privilegeObjectId,
+              created_at: new Date(),
+              created_by: new ObjectId('000000000000000000000000') // Default system user
+            }
+          },
+          { upsert: true, session }
+        );
+      });
 
       return {
         success: true,
-        modifiedCount: result.modifiedCount
+        modifiedCount
       };
     } catch (error) {
       return {
@@ -252,17 +348,33 @@ export class RoleService {
         };
       }
 
-      const result = await this.collection.updateOne(
-        { _id: roleObjectId },
-        { 
-          $pull: { privilege_ids: privilegeObjectId },
-          $set: { updated_at: new Date() }
-        }
-      );
+      // Use transaction to ensure Role.privilege_ids and RolePrivilege collection stay in sync
+      let modifiedCount = 0;
+      await withTransaction(async (session) => {
+        // Update privilege_ids in roles collection
+        const result = await this.collection.updateOne(
+          { _id: roleObjectId },
+          { 
+            $pull: { privilege_ids: privilegeObjectId },
+            $set: { updated_at: new Date() }
+          },
+          { session }
+        );
+        modifiedCount = result.modifiedCount || 0;
+
+        // Delete record from role_privileges collection
+        await this.rolePrivilegeCollection.deleteOne(
+          {
+            role_id: roleObjectId,
+            privilege_id: privilegeObjectId
+          },
+          { session }
+        );
+      });
 
       return {
         success: true,
-        modifiedCount: result.modifiedCount
+        modifiedCount
       };
     } catch (error) {
       return {

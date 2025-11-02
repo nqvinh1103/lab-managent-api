@@ -25,10 +25,7 @@ export const createInstrument = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Extract reagents from request body (optional, for Use Case 2: Install during creation)
-    const { reagents, ...instrumentData } = req.body;
-
-    const result = await getInstrumentService().create(instrumentData, req.user.id, reagents);
+    const result = await getInstrumentService().create(req.body, req.user.id);
 
     if (!result.success) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
