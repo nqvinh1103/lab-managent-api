@@ -7,6 +7,7 @@ import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UserDocument } from '../models/User';
 import { UserRoleDocument } from '../models/UserRole';
 import { createPaginationOptions, QueryResult, toObjectId } from '../utils/database.helper';
+import { withTransaction } from '../utils/transaction.helper';
 import { generatePassword } from '../utils/passwordGenerator';
 import { EmailService } from './email.service';
 
@@ -107,49 +108,63 @@ export class PatientService {
         updated_at: new Date()
       };
 
-      const userResult = await this.userCollection.insertOne(userToInsert as UserDocument);
-      
-      if (!userResult.insertedId) {
-        return {
-          success: false,
-          error: 'Failed to create user account'
-        };
-      }
-
-      // Create user_roles record
-      const userRoleDoc: Omit<UserRoleDocument, '_id' | 'created_at'> = {
-        user_id: userResult.insertedId,
-        role_id: normalUserRole,
-        created_by: patientData.created_by
-      };
-
-      await this.userRoleCollection.insertOne({
-        ...userRoleDoc,
-        created_at: new Date()
-      } as UserRoleDocument);
-
       // Create Patient record
       const patientToInsert: Omit<PatientDocument, '_id'> = {
         ...patientData,
-        user_id: userResult.insertedId,
         created_at: new Date(),
         updated_at: new Date()
       };
 
-      const patientResult = await this.collection.insertOne(patientToInsert as PatientDocument);
-      
-      if (!patientResult.insertedId) {
-        // Rollback: delete user account if patient creation fails
-        await this.userCollection.deleteOne({ _id: userResult.insertedId });
-        await this.userRoleCollection.deleteMany({ user_id: userResult.insertedId });
+      // Create user_roles record
+      const userRoleDoc: Omit<UserRoleDocument, '_id' | 'created_at'> = {
+        role_id: normalUserRole,
+        created_by: patientData.created_by
+      };
+
+      // Execute within transaction: insert User + insert UserRole + insert Patient
+      // Transaction ensures all operations succeed or fail together
+      let createdPatient: PatientDocument | null = null;
+      let userId: ObjectId | null = null;
+
+      await withTransaction(async (session) => {
+        // Insert User account
+        const userResult = await this.userCollection.insertOne(userToInsert as UserDocument, { session });
         
+        if (!userResult.insertedId) {
+          throw new Error('Failed to create user account');
+        }
+
+        userId = userResult.insertedId;
+
+        // Create user_roles record
+        await this.userRoleCollection.insertOne({
+          ...userRoleDoc,
+          user_id: userId,
+          created_at: new Date()
+        } as UserRoleDocument, { session });
+
+        // Create Patient record with user_id
+        const patientToInsertWithUserId = {
+          ...patientToInsert,
+          user_id: userId
+        };
+
+        const patientResult = await this.collection.insertOne(patientToInsertWithUserId as PatientDocument, { session });
+        
+        if (!patientResult.insertedId) {
+          throw new Error('Failed to create patient');
+        }
+
+        // Fetch created patient within transaction
+        createdPatient = await this.collection.findOne({ _id: patientResult.insertedId }, { session });
+      });
+
+      if (!createdPatient || !userId) {
         return {
           success: false,
           error: 'Failed to create patient'
         };
       }
-
-      const createdPatient = await this.collection.findOne({ _id: patientResult.insertedId });
 
       const emailResult = await this.emailService.sendPatientCredentials(patientData.email.toLowerCase(), patientData.full_name, temporaryPassword);
 
@@ -325,24 +340,31 @@ export class PatientService {
         };
       }
 
-      await this.collection.updateOne(
-        { _id: objectId },
-        { 
-          $set: { 
-            deleted_at: new Date(),
-            updated_by: deletedBy,
-            updated_at: new Date()
-          }
-        }
-      );
-
-      // Lock the associated user account
-      if (patient.user_id) {
-        await this.userCollection.updateOne(
-          { _id: patient.user_id },
-          { $set: { is_locked: true } }
+      // Execute within transaction: soft delete Patient + lock User
+      // Transaction ensures both operations succeed or fail together
+      await withTransaction(async (session) => {
+        // Soft delete Patient
+        await this.collection.updateOne(
+          { _id: objectId },
+          { 
+            $set: { 
+              deleted_at: new Date(),
+              updated_by: deletedBy,
+              updated_at: new Date()
+            }
+          },
+          { session }
         );
-      }
+
+        // Lock the associated user account
+        if (patient.user_id) {
+          await this.userCollection.updateOne(
+            { _id: patient.user_id },
+            { $set: { is_locked: true } },
+            { session }
+          );
+        }
+      });
 
       return {
         success: true,

@@ -5,6 +5,7 @@ import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UpdateUserInput, UserDocument } from '../models/User';
 import { UserRoleDocument } from '../models/UserRole';
 import { OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
+import { withTransaction } from '../utils/transaction.helper';
 
 export class UserService {
   private collection = getCollection<UserDocument>('users');
@@ -105,25 +106,40 @@ export class UserService {
         updated_at: new Date()
       };
 
-      const result = await this.collection.insertOne(userToInsert as UserDocument);
-      
-      if (result.insertedId) {
-        // Create record in user_roles collection
-        if (roleIds.length > 0) {
-          const userRoleDocs = roleIds.map(roleId => ({
-            user_id: result.insertedId,
-            role_id: roleId,
-            created_by: userToInsert.created_by,
-            created_at: new Date()
-          }));
-          await this.userRoleCollection.insertMany(userRoleDocs as UserRoleDocument[]);
-        }
-      
+      let createdUser: UserDocument | null = null;
 
-      const createdUser = await this.collection.findOne({ _id: result.insertedId });
+      // Use transaction to ensure User.role_ids and UserRole collection stay in sync
+      if (roleIds.length > 0) {
+        await withTransaction(async (session) => {
+          // Insert user
+          const result = await this.collection.insertOne(userToInsert as UserDocument, { session });
+          
+          if (result.insertedId) {
+            // Create records in user_roles collection
+            const userRoleDocs = roleIds.map(roleId => ({
+              user_id: result.insertedId,
+              role_id: roleId,
+              created_by: userToInsert.created_by,
+              created_at: new Date()
+            }));
+            await this.userRoleCollection.insertMany(userRoleDocs as UserRoleDocument[], { session });
+            
+            // Fetch created user
+            createdUser = await this.collection.findOne({ _id: result.insertedId }, { session });
+          }
+        });
+      } else {
+        // No roles, just insert user
+        const result = await this.collection.insertOne(userToInsert as UserDocument);
+        if (result.insertedId) {
+          createdUser = await this.collection.findOne({ _id: result.insertedId });
+        }
+      }
+
+      if (createdUser) {
         return {
           success: true,
-          data: createdUser!
+          data: createdUser
         };
       }
 
@@ -225,16 +241,61 @@ export class UserService {
         updateData.password_hash = await bcrypt.hash(updateData.password_hash, 12);
       }
 
-      const updateDoc = {
+      const updateDoc: any = {
         ...updateData,
         updated_at: new Date()
       };
 
-      const result = await this.collection.findOneAndUpdate(
-        { _id: objectId },
-        { $set: updateDoc },
-        { returnDocument: 'after' }
-      );
+      // Check if role_ids is being updated
+      const hasRoleIdsUpdate = 'role_ids' in updateData && updateData.role_ids !== undefined;
+
+      let result: UserDocument | null = null;
+
+      if (hasRoleIdsUpdate) {
+        // Update User.role_ids + sync UserRole collection in transaction
+        const roleIds = (updateData.role_ids || [])
+          .map(id => toObjectId(id))
+          .filter((id): id is ObjectId => id !== null);
+
+        result = await withTransaction(async (session) => {
+          // Update user document
+          const updatedUser = await this.collection.findOneAndUpdate(
+            { _id: objectId },
+            { $set: updateDoc },
+            { session, returnDocument: 'after' }
+          );
+
+          if (!updatedUser) {
+            throw new Error('User not found');
+          }
+
+          // Delete all existing UserRole records for this user
+          await this.userRoleCollection.deleteMany(
+            { user_id: objectId },
+            { session }
+          );
+
+          // Insert new UserRole records
+          if (roleIds.length > 0) {
+            const userRoleDocs = roleIds.map(roleId => ({
+              user_id: objectId,
+              role_id: roleId,
+              created_by: updatedUser.created_by,
+              created_at: new Date()
+            }));
+            await this.userRoleCollection.insertMany(userRoleDocs as UserRoleDocument[], { session });
+          }
+
+          return updatedUser;
+        });
+      } else {
+        // No role_ids update, just update user document
+        result = await this.collection.findOneAndUpdate(
+          { _id: objectId },
+          { $set: updateDoc },
+          { returnDocument: 'after' }
+        );
+      }
 
       if (!result) {
         return {
@@ -343,35 +404,41 @@ export class UserService {
         };
       }
 
-      // Update role_ids in users collection
-      const result = await this.collection.updateOne(
-        { _id: userObjectId },
-        { 
-          $addToSet: { role_ids: roleObjectId },
-          $set: { updated_at: new Date() }
-        }
-      );
-
       // Get created_by from parameter or use current user
-      const createdByObjectId = createdBy ? toObjectId(createdBy) : userObjectId;
+      const createdByObjectId = createdBy ? toObjectId(createdBy) : user.created_by;
 
-      // Create record in user_roles collection if not exists
-      await this.userRoleCollection.updateOne(
-        { user_id: userObjectId, role_id: roleObjectId },
-        { 
-          $set: { 
-            user_id: userObjectId, 
-            role_id: roleObjectId,
-            created_at: new Date(),
-            created_by: createdByObjectId || user.created_by
-          }
-        },
-        { upsert: true }
-      );
+      // Use transaction to ensure User.role_ids and UserRole collection stay in sync
+      let modifiedCount = 0;
+      await withTransaction(async (session) => {
+        // Update role_ids in users collection
+        const result = await this.collection.updateOne(
+          { _id: userObjectId },
+          { 
+            $addToSet: { role_ids: roleObjectId },
+            $set: { updated_at: new Date() }
+          },
+          { session }
+        );
+        modifiedCount = result.modifiedCount || 0;
+
+        // Create record in user_roles collection if not exists
+        await this.userRoleCollection.updateOne(
+          { user_id: userObjectId, role_id: roleObjectId },
+          { 
+            $set: { 
+              user_id: userObjectId, 
+              role_id: roleObjectId,
+              created_at: new Date(),
+              created_by: createdByObjectId
+            }
+          },
+          { upsert: true, session }
+        );
+      });
 
       return {
         success: true,
-        modifiedCount: result.modifiedCount
+        modifiedCount
       };
     } catch (error) {
       return {
@@ -393,24 +460,33 @@ export class UserService {
         };
       }
 
-      // Update role_ids in users collection
-      const result = await this.collection.updateOne(
-        { _id: userObjectId },
-        { 
-          $pull: { role_ids: roleObjectId },
-          $set: { updated_at: new Date() }
-        }
-      );
+      // Use transaction to ensure User.role_ids and UserRole collection stay in sync
+      let modifiedCount = 0;
+      await withTransaction(async (session) => {
+        // Update role_ids in users collection
+        const result = await this.collection.updateOne(
+          { _id: userObjectId },
+          { 
+            $pull: { role_ids: roleObjectId },
+            $set: { updated_at: new Date() }
+          },
+          { session }
+        );
+        modifiedCount = result.modifiedCount || 0;
 
-      // Delete record from user_roles collection
-      await this.userRoleCollection.deleteOne({
-        user_id: userObjectId,
-        role_id: roleObjectId
+        // Delete record from user_roles collection
+        await this.userRoleCollection.deleteOne(
+          {
+            user_id: userObjectId,
+            role_id: roleObjectId
+          },
+          { session }
+        );
       });
 
       return {
         success: true,
-        modifiedCount: result.modifiedCount
+        modifiedCount
       };
     } catch (error) {
       return {

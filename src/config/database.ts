@@ -70,6 +70,13 @@ const getCollection = <T extends Document = Document>(collectionName: string) =>
   return database.collection<T>(collectionName)
 }
 
+const getClient = (): MongoClient => {
+  if (!client) {
+    throw new Error('Database not connected. Call connectDB() first.')
+  }
+  return client
+}
+
 // Graceful shutdown
 process.on('SIGINT', async () => {
   await disconnectDB()
@@ -81,5 +88,5 @@ process.on('SIGTERM', async () => {
   process.exit(0)
 })
 
-export { connectDB, disconnectDB, getCollection, getDB }
+export { connectDB, disconnectDB, getClient, getCollection, getDB }
 

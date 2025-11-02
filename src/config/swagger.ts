@@ -52,6 +52,14 @@ const options: swaggerJsdoc.Options = {
       {
         name: 'Privileges',
         description: 'Privilege endpoints (read-only, requires ADMIN or LAB_MANAGER role)'
+      },
+      {
+        name: 'Parameters',
+        description: 'Parameter endpoints (read-only master data)'
+      },
+      {
+        name: 'Configurations',
+        description: 'Configuration management endpoints'
       }
     ]
   },

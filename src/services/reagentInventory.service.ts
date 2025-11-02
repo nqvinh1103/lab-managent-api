@@ -1,14 +1,15 @@
-import { ObjectId, Sort } from 'mongodb';
+import { ClientSession, ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
 import { MESSAGES } from '../constants/messages';
 import {
-  CreateReagentInventoryInput,
-  ReagentInventoryDocument,
-  UpdateReagentInventoryInput,
-  UpdateReagentInventoryStockInput,
-  UpdateReagentInventoryStatusInput
+    CreateReagentInventoryInput,
+    ReagentInventoryDocument,
+    UpdateReagentInventoryInput,
+    UpdateReagentInventoryStatusInput,
+    UpdateReagentInventoryStockInput
 } from '../models/ReagentInventory';
 import { createPaginationOptions, createSortOptions, QueryResult, toObjectId } from '../utils/database.helper';
+import { withTransaction } from '../utils/transaction.helper';
 
 export class ReagentInventoryService {
   private getCollection() {
@@ -440,11 +441,53 @@ export class ReagentInventoryService {
         updateDoc.quantity_in_stock = 0;
       }
 
-      const result = await this.getCollection().findOneAndUpdate(
-        { _id: objectId },
-        { $set: updateDoc },
-        { returnDocument: 'after' }
-      );
+      // Check if denormalized fields are being updated (lot_number, expiration_date)
+      // These need to sync to InstrumentReagent
+      const denormalizedFields = ['lot_number', 'expiration_date'];
+      const hasDenormalizedChanges = denormalizedFields.some(field => field in updateData);
+
+      let result: ReagentInventoryDocument | null;
+
+      if (hasDenormalizedChanges) {
+        // Update ReagentInventory + sync to InstrumentReagent in transaction
+        const instrumentReagentCollection = getCollection<any>('instrument_reagents');
+
+        result = await withTransaction(async (session) => {
+          // Update ReagentInventory document
+          const updatedInventory = await this.getCollection().findOneAndUpdate(
+            { _id: objectId },
+            { $set: updateDoc },
+            { session, returnDocument: 'after' }
+          );
+
+          if (!updatedInventory) {
+            throw new Error('Reagent inventory not found');
+          }
+
+          // Build update document for InstrumentReagent denormalized fields
+          const instrumentReagentUpdate: any = {};
+          if ('lot_number' in updateData) instrumentReagentUpdate.reagent_lot_number = updateData.lot_number;
+          if ('expiration_date' in updateData) instrumentReagentUpdate.expiration_date = updateData.expiration_date;
+
+          // Update all InstrumentReagent documents with matching reagent_inventory_id
+          if (Object.keys(instrumentReagentUpdate).length > 0) {
+            await instrumentReagentCollection.updateMany(
+              { reagent_inventory_id: objectId },
+              { $set: instrumentReagentUpdate },
+              { session }
+            );
+          }
+
+          return updatedInventory;
+        });
+      } else {
+        // No denormalized fields changed, just update ReagentInventory
+        result = await this.getCollection().findOneAndUpdate(
+          { _id: objectId },
+          { $set: updateDoc },
+          { returnDocument: 'after' }
+        );
+      }
 
       if (!result) {
         return {
@@ -512,6 +555,55 @@ export class ReagentInventoryService {
         success: false,
         error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
       };
+    }
+  }
+
+  /**
+   * Atomically deduct stock from inventory
+   * Prevents race conditions by using atomic findOneAndUpdate with condition
+   * Returns the updated inventory document if successful, null if insufficient stock
+   * 
+   * @param id - Inventory ID
+   * @param quantity - Quantity to deduct
+   * @param session - Optional MongoDB session for transaction support
+   * @returns Updated inventory document or null if insufficient stock
+   */
+  async atomicDeductStock(
+    id: string | ObjectId,
+    quantity: number,
+    session?: ClientSession
+  ): Promise<ReagentInventoryDocument | null> {
+    try {
+      const objectId = toObjectId(id);
+      if (!objectId) {
+        throw new Error('Invalid inventory ID');
+      }
+
+      if (quantity <= 0) {
+        throw new Error('Quantity must be greater than zero');
+      }
+
+      // Atomic operation: check stock >= quantity AND deduct atomically
+      // This prevents race conditions - if stock is insufficient, update fails and returns null
+      const result = await this.getCollection().findOneAndUpdate(
+        {
+          _id: objectId,
+          quantity_in_stock: { $gte: quantity },
+          status: { $ne: 'Returned' } // Also ensure status is not 'Returned'
+        },
+        {
+          $inc: { quantity_in_stock: -quantity },
+          $set: { updated_at: new Date() }
+        },
+        {
+          session,
+          returnDocument: 'after'
+        }
+      );
+
+      return result;
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Failed to deduct stock atomically');
     }
   }
 }

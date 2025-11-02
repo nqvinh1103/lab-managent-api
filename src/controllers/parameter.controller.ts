@@ -12,6 +12,68 @@ const getParameterService = () => {
   return parameterService;
 };
 
+/**
+ * @openapi
+ * /parameters:
+ *   get:
+ *     tags:
+ *       - Parameters
+ *     summary: Get all parameters
+ *     description: Get list of all parameters (read-only master data). Supports pagination and search.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by parameter name, code, or abbreviation
+ *     responses:
+ *       200:
+ *         description: List of parameters retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Parameter'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *       401:
+ *         description: Unauthorized - Missing or invalid token
+ *       500:
+ *         description: Server error
+ */
 // Get all parameters with pagination and search
 export const getAllParameters = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -50,6 +112,47 @@ export const getAllParameters = async (req: Request, res: Response): Promise<voi
   }
 };
 
+/**
+ * @openapi
+ * /parameters/{id}:
+ *   get:
+ *     tags:
+ *       - Parameters
+ *     summary: Get parameter by ID
+ *     description: Get a specific parameter by its ID (read-only master data)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Parameter ID
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       200:
+ *         description: Parameter retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   $ref: '#/components/schemas/Parameter'
+ *       401:
+ *         description: Unauthorized - Missing or invalid token
+ *       404:
+ *         description: Parameter not found
+ *       500:
+ *         description: Server error
+ */
 // Get parameter by ID
 export const getParameterById = async (req: Request, res: Response): Promise<void> => {
   try {

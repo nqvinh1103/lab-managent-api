@@ -7,16 +7,13 @@ import {
   UpdateInstrumentInput
 } from '../models/Instrument';
 import { createPaginationOptions, createTextSearchFilter, QueryResult, toObjectId } from '../utils/database.helper';
-import { createInstrumentReagent } from './instrumentReagent.service';
-import { CreateInstrumentReagentInput } from '../models/InstrumentReagent';
 
 export class InstrumentService {
   private collection = getCollection<InstrumentDocument>('instruments');
 
   async create(
     instrumentData: CreateInstrumentInput, 
-    userId: string | ObjectId,
-    reagents?: Omit<CreateInstrumentReagentInput, 'instrument_id' | 'installed_at' | 'installed_by'>[]
+    userId: string | ObjectId
   ): Promise<QueryResult<InstrumentDocument>> {
     try {
       const userObjectId = toObjectId(userId);
@@ -51,41 +48,6 @@ export class InstrumentService {
 
       if (result.insertedId) {
         const createdInstrument = await this.collection.findOne({ _id: result.insertedId });
-        
-        // Install reagents if provided (Use Case 2: Install during instrument creation)
-        if (reagents && reagents.length > 0 && createdInstrument) {
-          const now = new Date();
-          const installationErrors: string[] = [];
-          
-          for (const reagentData of reagents) {
-            try {
-              // Reagent data should contain reagent_inventory_id and quantity
-              // All other fields (reagent_name, lot_number, expiration_date, etc.) will be populated from inventory
-              await createInstrumentReagent(
-                {
-                  instrument_id: result.insertedId,
-                  reagent_inventory_id: reagentData.reagent_inventory_id,
-                  quantity: reagentData.quantity,
-                  quantity_remaining: reagentData.quantity_remaining,
-                  installed_at: reagentData.installed_at || now,
-                  installed_by: reagentData.installed_by || userObjectId
-                },
-                userObjectId
-              );
-            } catch (reagentError) {
-              // Collect errors but don't fail the instrument creation
-              const errorMessage = reagentError instanceof Error ? reagentError.message : 'Unknown error';
-              const reagentInventoryId = (reagentData as any).reagent_inventory_id?.toString() || 'unknown';
-              installationErrors.push(`Failed to install reagent from inventory ${reagentInventoryId}: ${errorMessage}`);
-              console.error(`Failed to install reagent from inventory ${reagentInventoryId}:`, reagentError);
-            }
-          }
-          
-          // If some reagents failed, log warning but don't fail the operation
-          if (installationErrors.length > 0) {
-            console.warn('⚠️ Some reagents failed to install:', installationErrors);
-          }
-        }
         
         return {
           success: true,
