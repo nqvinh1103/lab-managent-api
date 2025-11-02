@@ -22,7 +22,6 @@ export const createTestOrder = async (
   const now = new Date();
   // 🔍 1. Tìm bệnh nhân theo email
   const patient = await patientCollection.findOne({ email: input.patient_email });
-  console.log("patient vvvvvvvvvvvvvvvvvvvvvvv", input.patient_email, patient);
   if (!patient) {
     return {
       success: false,
@@ -576,12 +575,18 @@ export const addTestResults = async (
       })
     );
 
-    // Add results to test order
+    // Add results to test order and mark order as completed
     await collection.updateOne(
       { _id },
       {
         $push: { test_results: { $each: processedResults } },
-        $set: { status: 'running', updated_at: now, updated_by: updatedBy }
+        $set: {
+          status: 'completed',
+          run_by: updatedBy,
+          run_at: now,
+          updated_at: now,
+          updated_by: updatedBy
+        }
       }
     );
 
