@@ -9,6 +9,7 @@ import './schemas/reagent.schema';
 import './schemas/reagentInventory.schema';
 import './schemas/role.schema';
 import './schemas/user.schema';
+import './schemas/parameter.schema';
 import './schemas/testOrder.schema';
 
 // Import all endpoint documentation
