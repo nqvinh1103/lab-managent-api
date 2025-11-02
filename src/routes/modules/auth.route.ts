@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { changePassword, forgotPassword, login, logout, refreshToken, resetPassword } from '../../controllers/auth.controller';
-import { authMiddleware } from '../../middlewares/auth.middleware';
+import { authMiddleware, refreshTokenMiddleware } from '../../middlewares/auth.middleware';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
 import { changePasswordValidation, forgotPasswordValidation, resetPasswordValidation } from '../../middlewares/validations/auth.validation';
 
@@ -10,7 +10,8 @@ const router = Router();
 router.post('/login', login);
 
 // POST /auth/refresh-token - Refresh JWT token
-router.post('/refresh-token', authMiddleware, refreshToken);
+// Uses refreshTokenMiddleware to allow expired tokens for refresh
+router.post('/refresh-token', refreshTokenMiddleware, refreshToken);
 
 // POST /auth/logout - User logout
 router.post('/logout', logout);

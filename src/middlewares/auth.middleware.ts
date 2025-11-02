@@ -6,12 +6,11 @@ import { MESSAGES } from '../constants/messages'
 import { PrivilegeDocument } from '../models/Privilege'
 import { RoleDocument } from '../models/Role'
 import { toObjectId } from '../utils/database.helper'
-import { extractTokenFromHeader, verifyToken } from '../utils/jwt'
+import { extractTokenFromHeader, verifyToken, verifyTokenWithIgnoreExpiration } from '../utils/jwt'
 
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const token = extractTokenFromHeader(req.headers.authorization)
-     console.log('Authenticatedddddddddd user in middleware:', req.user);
     if (!token) {
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
@@ -47,6 +46,38 @@ export const optionalAuthMiddleware = async (req: Request, res: Response, next: 
   } catch (error) {
     // For optional auth, we don't throw error, just continue without user
     next()
+  }
+}
+
+/**
+ * Middleware for refresh token endpoint
+ * Allows expired tokens to be used for refreshing, but still verifies signature
+ * This enables the refresh flow even when access token has expired
+ */
+export const refreshTokenMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const token = extractTokenFromHeader(req.headers.authorization)
+    
+    if (!token) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'No token provided'
+      })
+      return
+    }
+
+    // Verify signature but ignore expiration
+    const decoded = verifyTokenWithIgnoreExpiration(token)
+    req.user = decoded
+   
+    next()
+  } catch (error) {
+    res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      success: false,
+      message: MESSAGES.UNAUTHORIZED,
+      error: error instanceof Error ? error.message : 'Token verification failed'
+    })
   }
 }
 
