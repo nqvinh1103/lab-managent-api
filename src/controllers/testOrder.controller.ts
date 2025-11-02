@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
+import { getCollection } from '../config/database';
 import { CreateTestOrderInput, TestOrderDocument, UpdateTestOrderInput } from '../models/TestOrder';
 import {
   createTestOrder,
@@ -307,16 +308,38 @@ export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const { id } = req.params;
-    const { results } = req.body;
+    const { barcode } = req.body;
+    if (!barcode) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, "Barcode is required");
+      return;
+    }
 
-    const updated = await addTestResults(id, results, new ObjectId(req.user.id));
+    const { results } = req.body;
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, "Test results are required");
+      return;
+    }
+
+    // First find the test order by barcode
+    const collection = getCollection<TestOrderDocument>('test_orders');
+    const testOrder = await collection.findOne({ barcode });
+    
+    if (!testOrder) {
+      sendResponse(res, HTTP_STATUS.NOT_FOUND, false, "No test order found with this barcode");
+      return;
+    }
+
+    // Add results to the found test order
+    const updated = await addTestResults(testOrder._id.toString(), results, new ObjectId(req.user.id));
     if (!updated) {
       sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
       return;
     }
 
-    await logEvent('UPDATE', 'TestOrder', id, req.user.id, 'Added test results', { results_count: results.length });
+    await logEvent('UPDATE', 'TestOrder', testOrder._id.toString(), req.user.id, 'Added test results', { 
+      results_count: results.length,
+      barcode
+    });
 
     sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
   } catch (error) {

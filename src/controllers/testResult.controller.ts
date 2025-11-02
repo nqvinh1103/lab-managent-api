@@ -1,116 +1,58 @@
 import { Request, Response } from 'express';
+import { ObjectId } from 'mongodb';
+import { getCollection } from '../config/database';
+import { addTestResults } from '../services/testOrder.service';
 import * as testResultService from '../services/testResult.service';
-import { CreateTestResultInput, UpdateTestResultInput } from '../models/TestOrder';
+import { UpdateTestResultInput } from '../models/TestOrder';
 import { MESSAGES } from '../constants/messages';
 
-/**
- * @openapi
- * components:
- *   schemas:
- *     TestResult:
- *       type: object
- *       properties:
- *         _id:
- *           type: string
- *         parameter_id:
- *           type: string
- *         result_value:
- *           type: number
- *         unit:
- *           type: string
- *         reference_range_text:
- *           type: string
- *         is_flagged:
- *           type: boolean
- *         reagent_lot_number:
- *           type: string
- *         measured_at:
- *           type: string
- *           format: date-time
- *         created_at:
- *           type: string
- *           format: date-time
- *         updated_at:
- *           type: string
- *           format: date-time
- */
+interface TestOrderDocument {
+  _id: ObjectId;
+  barcode: string;
+  test_results: any[];
+}
 
-/**
- * @openapi
- * /test-results:
- *   post:
- *     tags:
- *       - TestResults
- *     summary: Create a new test result
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/TestResult'
- *     responses:
- *       201:
- *         description: Test result created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/TestResult'
- *       400:
- *         description: Validation error
- *       500:
- *         description: Internal server error
- */
+// Create Test Result
 export const createTestResult = async (req: Request, res: Response) => {
   try {
-    const data: CreateTestResultInput = req.body;
-console.log('🔍 testResultService =', testResultService);
+    const { barcode, results } = req.body;
 
-    const created = await testResultService.createTestResult(data);
+    if (!barcode) {
+      return res.status(400).json({ success: false, message: "Barcode is required" });
+    }
 
-    res.status(201).json({ success: true, message: MESSAGES.CREATED, data: created });
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      return res.status(400).json({ success: false, message: "Test results are required" });
+    }
+
+    const collection = getCollection('test_orders');
+    const testOrder = await collection.findOne({ barcode });
+    
+    if (!testOrder) {
+      return res.status(404).json({ success: false, message: "No test order found with this barcode" });
+    }
+
+  const order = await addTestResults(testOrder._id.toString(), results, new ObjectId(String(req.user?.id)));
+    if (!order) {
+      return res.status(400).json({ success: false, message: MESSAGES.DB_SAVE_ERROR });
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      message: MESSAGES.CREATED, 
+      data: {
+        _id: order._id,
+        barcode: order.barcode,
+        test_results: order.test_results
+      }
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: MESSAGES.INTERNAL_ERROR });
   }
 };
 
-/**
- * @openapi
- * /test-results:
- *   get:
- *     tags:
- *       - TestResults
- *     summary: Get all test results
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of test results
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/TestResult'
- *       500:
- *         description: Internal server error
- */
+// Get all Test Results
 export const getAllTestResults = async (_req: Request, res: Response) => {
   try {
     const results = await testResultService.getAllTestResults();
@@ -121,40 +63,7 @@ export const getAllTestResults = async (_req: Request, res: Response) => {
   }
 };
 
-/**
- * @openapi
- * /test-results/{id}:
- *   get:
- *     tags:
- *       - TestResults
- *     summary: Get a test result by ID
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Test result found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/TestResult'
- *       404:
- *         description: Test result not found
- *       500:
- *         description: Internal server error
- */
+// Get Test Result by ID
 export const getTestResultById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -167,46 +76,7 @@ export const getTestResultById = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * @openapi
- * /test-results/{id}:
- *   put:
- *     tags:
- *       - TestResults
- *     summary: Update a test result
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/TestResult'
- *     responses:
- *       200:
- *         description: Test result updated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/TestResult'
- *       404:
- *         description: Test result not found
- *       500:
- *         description: Internal server error
- */
+// Update Test Result
 export const updateTestResult = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -220,38 +90,7 @@ export const updateTestResult = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * @openapi
- * /test-results/{id}:
- *   delete:
- *     tags:
- *       - TestResults
- *     summary: Delete a test result
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Test result deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *       404:
- *         description: Test result not found
- *       500:
- *         description: Internal server error
- */
+// Delete Test Result
 export const deleteTestResult = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

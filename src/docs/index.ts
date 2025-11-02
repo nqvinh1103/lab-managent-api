@@ -11,6 +11,7 @@ import './schemas/role.schema';
 import './schemas/user.schema';
 import './schemas/parameter.schema';
 import './schemas/testOrder.schema';
+import './schemas/testResult.schema';
 
 // Import all endpoint documentation
 import './endpoints/auth.docs';
@@ -25,6 +26,7 @@ import './endpoints/role.docs';
 import './endpoints/user.docs';
 import './endpoints/reagentUsageHistory.docs';
 import './endpoints/testOrder.docs';
+import './endpoints/testResult.docs';
 
 // reagent usage schemas
 import './schemas/reagentUsageHistory.schema';
