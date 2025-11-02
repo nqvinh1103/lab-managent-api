@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { InstrumentService } from '../services/instrument.service';
+import { logEvent } from '../utils/eventLog.helper';
 
 let instrumentService: InstrumentService | null = null;
 
@@ -35,6 +36,20 @@ export const createInstrument = async (req: Request, res: Response): Promise<voi
       });
       return;
     }
+
+    // Log instrument creation
+    await logEvent(
+      'CREATE',
+      'Instrument',
+      result.data!._id.toString(),
+      req.user.id,
+      `Created instrument: ${result.data!.instrument_name}`,
+      { 
+        instrument_name: result.data!.instrument_name,
+        instrument_type: result.data!.instrument_type,
+        serial_number: result.data!.serial_number
+      }
+    );
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -141,6 +156,20 @@ export const updateInstrument = async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    // Log the update
+    const changedFields = Object.keys(req.body);
+    await logEvent(
+      'UPDATE',
+      'Instrument',
+      id,
+      req.user.id,
+      `Updated instrument: ${result.data!.instrument_name}`,
+      { 
+        changed_fields: changedFields,
+        instrument_name: result.data!.instrument_name
+      }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: MESSAGES.UPDATED,
@@ -159,6 +188,17 @@ export const updateInstrument = async (req: Request, res: Response): Promise<voi
 export const deleteInstrument = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    // Get instrument details before deletion for logging
+    const instrumentToDelete = await getInstrumentService().findById(id);
+    if (!instrumentToDelete.success) {
+      res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: MESSAGES.NOT_FOUND,
+        error: 'Instrument not found'
+      });
+      return;
+    }
+
     const result = await getInstrumentService().deleteById(id);
 
     if (!result.success) {
@@ -169,6 +209,19 @@ export const deleteInstrument = async (req: Request, res: Response): Promise<voi
       });
       return;
     }
+
+    // Log the deletion
+    await logEvent(
+      'DELETE',
+      'Instrument',
+      id,
+      req.user?.id,
+      `Deleted instrument: ${instrumentToDelete.data!.instrument_name}`,
+      { 
+        instrument_name: instrumentToDelete.data!.instrument_name,
+        instrument_type: instrumentToDelete.data!.instrument_type
+      }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -210,6 +263,19 @@ export const activateInstrument = async (req: Request, res: Response): Promise<v
       return;
     }
 
+    // Log activation
+    await logEvent(
+      'UPDATE',
+      'Instrument',
+      id,
+      req.user.id,
+      `Activated instrument: ${result.data!.instrument_name}`,
+      { 
+        instrument_name: result.data!.instrument_name,
+        action: 'activate'
+      }
+    );
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'Instrument activated successfully',
@@ -249,6 +315,19 @@ export const deactivateInstrument = async (req: Request, res: Response): Promise
       });
       return;
     }
+
+    // Log deactivation
+    await logEvent(
+      'UPDATE',
+      'Instrument',
+      id,
+      req.user.id,
+      `Deactivated instrument: ${result.data!.instrument_name}`,
+      { 
+        instrument_name: result.data!.instrument_name,
+        action: 'deactivate'
+      }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -340,6 +419,21 @@ export const changeModeInstrument = async (req: Request, res: Response): Promise
       });
       return;
     }
+
+    // Log mode change
+    await logEvent(
+      'UPDATE',
+      'Instrument',
+      id,
+      req.user?.id,
+      `Changed instrument mode: ${result.data!.instrument_name} to ${mode}`,
+      { 
+        instrument_name: result.data!.instrument_name,
+        mode: mode,
+        mode_reason: mode_reason,
+        action: 'change_mode'
+      }
+    );
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
