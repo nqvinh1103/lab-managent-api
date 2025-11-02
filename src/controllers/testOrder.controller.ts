@@ -1,84 +1,133 @@
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
-import { CreateTestOrderInput, UpdateTestOrderWithPatientInput } from '../models/TestOrder';
+import { HTTP_STATUS } from '../constants/httpStatus';
+import { MESSAGES } from '../constants/messages';
+import { CreateTestOrderInput, TestOrderDocument, UpdateTestOrderInput } from '../models/TestOrder';
 import {
-  addComment,
-  addTestResults,
-  completeTestOrder,
   createTestOrder,
-  deleteComment,
   deleteTestOrder,
-  exportToExcel,
   getAllTestOrders,
   getTestOrderById,
-  printToPDF,
+  updateTestOrder,
   processSample,
+  addComment,
   updateComment,
-  updateTestOrder
+  deleteComment,
+  addTestResults,
+  completeTestOrder,
+  exportToExcel,
+  printToPDF
 } from '../services/testOrder.service';
 import { logEvent } from '../utils/eventLog.helper';
+import { ApiError } from '../utils/apiError';
 
-/**
- * @openapi
- * /test-orders:
- *   post:
- *     tags:
- *       - TestOrders
- *     summary: Create a new test order
- *     description: Create a new test order. Requires authentication.
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               patient_email:
- *                 type: string
- *               instrument_name:
- *                 type: string
- *           example:
- *             patient_email: "nguyevana@email.com"
- *             instrument_name: "Analyzer A"
- *     responses:
- *       201:
- *         description: Created successfully
- *       401:
- *         description: Unauthorized (missing or invalid token)
- *       500:
- *         description: Failed to create test order
- */
-export const createOrder = async (req: Request, res: Response) => {
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+    email: string;
+    roles: string[];
+  };
+}
+
+interface ApiResponse<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  error?: string;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const user = (req as any).user;
-    if (!user) return res.status(401).json({ success: false, error: 'User not authenticated' });
-
-    // Validate patient_email
-    if (!req.body.patient_email) {
-      return res.status(400).json({ success: false, error: 'patient_email is required' });
+    // Check authentication
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
     }
 
-    const userId = new ObjectId(user.id);
-    const orderData: CreateTestOrderInput & { patient_email: string } = req.body;
-    const result = await createTestOrder(orderData, userId);
+    // Validate required fields
+    const { patient_email, instrument_name } = req.body;
+    if (!patient_email) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.REQUIRED_FIELD);
+      return;
+    }
 
-    // Log event
-    await logEvent(
-      'CREATE',
-      'TestOrder',
-      result._id,
-      userId,
-      `Created test order #${result.order_number} for patient ${result.patient_id}`,
-      { order_number: result.order_number, patient_id: result.patient_id.toString() }
+    // Call service to create test order with QueryResult return
+    try {
+      const result = await createTestOrder(
+        {
+          patient_email,
+          instrument_name
+        },
+        new ObjectId(req.user.id)
+      );
+
+      // Handle service result
+      if (!result.success) {
+        console.log('Service returned error:', result.error);
+        sendResponse(
+          res, 
+          result.statusCode || HTTP_STATUS.BAD_REQUEST,
+          false,
+          result.error || MESSAGES.DB_SAVE_ERROR
+        );
+        return;
+      }
+
+      // Log successful creation
+      await logEvent(
+        'CREATE',
+        'TestOrder',
+        result.data!._id.toString(),
+        req.user.id,
+        'Created new test order',
+        { patient_email, instrument_name }
+      );
+
+      // Send success response
+      sendResponse(
+        res,
+        HTTP_STATUS.CREATED,
+        true,
+        MESSAGES.CREATED,
+        result.data
+      );
+    } catch (serviceError) {
+      console.error('Service error creating test order:', serviceError);
+      throw serviceError; // Re-throw to be caught by outer catch
+    }
+  } catch (error) {
+    console.error('Error creating test order:', error);
+    sendResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      false,
+      error instanceof Error ? error.message : MESSAGES.INTERNAL_ERROR
     );
-
-    res.status(201).json({ success: true, data: result });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to create test order' });
   }
+};
+
+const sendResponse = <T>(
+  res: Response,
+  statusCode: number,
+  success: boolean,
+  message: string,
+  data?: T,
+  error?: string,
+  pagination?: ApiResponse['pagination']
+): void => {
+  const response: ApiResponse<T> = {
+    success,
+    message,
+  ...(data && { data }),
+    ...(error && { error }),
+    ...(pagination && { pagination })
+  };
+  res.status(statusCode).json(response);
 };
 
 /**
@@ -107,16 +156,261 @@ export const createOrder = async (req: Request, res: Response) => {
  *       500:
  *         description: Server error
  */
-export const getOrders = async (_req: Request, res: Response) => {
+export const getOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const items = await getAllTestOrders();
-    if (!items || items.length === 0) {
-      return res.json({ success: true, data: [], message: 'No Data' });
+    if (!req.user) {
+      sendResponse(
+        res,
+        HTTP_STATUS.UNAUTHORIZED,
+        false,
+        MESSAGES.UNAUTHORIZED
+      );
+      return;
     }
-    res.json({ success: true, data: items });
+
+    const result = await getAllTestOrders();
+    
+    sendResponse(
+      res,
+      HTTP_STATUS.OK,
+      true,
+      MESSAGES.SUCCESS,
+      result
+    );
+
+    // Skip logging for read operations since they don't modify data
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to fetch test orders' });
+    console.error('Error fetching test orders:', error);
+    
+    sendResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      false,
+      MESSAGES.INTERNAL_ERROR,
+      undefined,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+};
+
+// Process Sample (auto-create from barcode) controller
+export const processSampleOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { barcode, instrument_id } = req.body;
+    try {
+      const result = await processSample(barcode, instrument_id, new ObjectId(req.user.id));
+      sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.SUCCESS, result);
+    } catch (err) {
+      console.error('Error in processSampleOrder:', err);
+      if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
+        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
+        sendResponse(res, status, false, (err as any).message || MESSAGES.INTERNAL_ERROR);
+        return;
+      }
+      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+    }
+  } catch (error) {
+    console.error('Error processing sample (outer):', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Add comment to order
+export const addCommentToOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+    const { comment_text } = req.body;
+
+    const created = await addComment(id, comment_text, new ObjectId(req.user.id));
+    if (!created) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+      return;
+    }
+
+    await logEvent('CREATE', 'TestOrderComment', id, req.user.id, 'Added comment to test order', { comment_text });
+
+    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.CREATED, created);
+  } catch (error) {
+    console.error('Error adding comment to order:', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Update comment in order
+export const updateCommentInOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id, commentIndex } = req.params;
+    const { comment_text } = req.body;
+    const idx = Number(commentIndex);
+
+    const updated = await updateComment(id, idx, comment_text, new ObjectId(req.user.id));
+    if (!updated) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+      return;
+    }
+
+    await logEvent('UPDATE', 'TestOrderComment', id, req.user.id, `Updated comment #${idx}`, { comment_text });
+
+    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+  } catch (error) {
+    console.error('Error updating comment in order:', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Delete comment from order
+export const deleteCommentFromOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id, commentIndex } = req.params;
+    const idx = Number(commentIndex);
+
+    const updated = await deleteComment(id, idx, new ObjectId(req.user.id));
+    if (!updated) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_DELETE_ERROR);
+      return;
+    }
+
+    await logEvent('DELETE', 'TestOrderComment', id, req.user.id, `Deleted comment #${idx}`, { comment_index: idx });
+
+    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.DELETED, updated);
+  } catch (error) {
+    console.error('Error deleting comment from order:', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Add test results to order
+export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+    const { results } = req.body;
+
+    const updated = await addTestResults(id, results, new ObjectId(req.user.id));
+    if (!updated) {
+      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+      return;
+    }
+
+    await logEvent('UPDATE', 'TestOrder', id, req.user.id, 'Added test results', { results_count: results.length });
+
+    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+  } catch (error) {
+    console.error('Error adding results to order:', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Complete test order
+export const completeOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+    const { reagent_usage } = req.body;
+
+    try {
+      const updated = await completeTestOrder(id, new ObjectId(req.user.id), reagent_usage);
+      if (!updated) {
+        sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+        return;
+      }
+
+      await logEvent('UPDATE', 'TestOrder', id, req.user.id, 'Completed test order', { reagent_usage });
+
+      sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+    } catch (err) {
+      console.error('Error completing order:', err);
+      if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
+        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
+        sendResponse(res, status, false, (err as any).message || MESSAGES.INTERNAL_ERROR);
+        return;
+      }
+      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+    }
+  } catch (error) {
+    console.error('Error in completeOrder (outer):', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Export orders to Excel
+export const exportOrdersToExcel = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const filters = {
+      month: req.query.month as string | undefined,
+      status: req.query.status as string | undefined,
+      patient_name: req.query.patient_name as string | undefined
+    };
+
+    try {
+      const buffer = await exportToExcel(filters);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="test_orders.xlsx"`);
+      res.status(200).send(buffer);
+    } catch (err) {
+      console.error('Error exporting orders to Excel:', err);
+      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+    }
+  } catch (error) {
+    console.error('Error in exportOrdersToExcel (outer):', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+  }
+};
+
+// Print order to PDF (returns HTML for now)
+export const printOrderToPDF = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+
+    try {
+      const html = await printToPDF(id);
+      res.setHeader('Content-Type', 'text/html');
+      res.status(200).send(html);
+    } catch (err) {
+      console.error('Error printing order to PDF:', err);
+      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+    }
+  } catch (error) {
+    console.error('Error in printOrderToPDF (outer):', error);
+    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
   }
 };
 
@@ -151,20 +445,61 @@ export const getOrders = async (_req: Request, res: Response) => {
  *       404:
  *         description: Test order not found
  */
-export const getOrderById = async (req: Request, res: Response) => {
+export const getOrderById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
-    const item = await getTestOrderById(id);
-    if (!item) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Test order not found or does not contain any data to display' 
-      });
+    if (!req.user) {
+      sendResponse(
+        res,
+        HTTP_STATUS.UNAUTHORIZED,
+        false,
+        MESSAGES.UNAUTHORIZED
+      );
+      return;
     }
-    res.json({ success: true, data: item });
+
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      sendResponse(
+        res,
+        HTTP_STATUS.BAD_REQUEST,
+        false,
+        MESSAGES.INVALID_FORMAT
+      );
+      return;
+    }
+
+    const result = await getTestOrderById(id);
+
+    if (!result) {
+      sendResponse(
+        res,
+        HTTP_STATUS.NOT_FOUND,
+        false,
+        MESSAGES.NOT_FOUND
+      );
+      return;
+    }
+
+    sendResponse(
+      res,
+      HTTP_STATUS.OK,
+      true,
+      MESSAGES.SUCCESS,
+      result
+    );
+
+    // Skip logging for read operations since they don't modify data
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to fetch test order' });
+    console.error('Error fetching test order:', error);
+    
+    sendResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      false,
+      MESSAGES.INTERNAL_ERROR,
+      undefined,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -195,30 +530,70 @@ export const getOrderById = async (req: Request, res: Response) => {
  *       404:
  *         description: Test order not found
  */
-export const updateOrder = async (req: Request, res: Response) => {
+export const updateOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      sendResponse(
+        res,
+        HTTP_STATUS.UNAUTHORIZED,
+        false,
+        MESSAGES.UNAUTHORIZED
+      );
+      return;
+    }
+
     const id = req.params.id;
-    const data: UpdateTestOrderWithPatientInput = req.body;
-    const updated = await updateTestOrder(id, data);
-    if (!updated) return res.status(404).json({ success: false, message: 'Order not found or update failed' });
-    
-    // Log event
-    const user = (req as any).user;
-    const userId = user && user.id ? user.id : undefined;
+    if (!ObjectId.isValid(id)) {
+      sendResponse(
+        res,
+        HTTP_STATUS.BAD_REQUEST,
+        false,
+        MESSAGES.INVALID_FORMAT
+      );
+      return;
+    }
+
+    const data: UpdateTestOrderInput = req.body;
+    const result = await updateTestOrder(id, data);
+
+    if (!result) {
+      sendResponse(
+        res,
+        HTTP_STATUS.NOT_FOUND,
+        false,
+        MESSAGES.NOT_FOUND
+      );
+      return;
+    }
+
     const changedFields = Object.keys(data);
     await logEvent(
       'UPDATE',
       'TestOrder',
       id,
-      userId,
-      `Updated test order ${id} - changed: ${changedFields.join(', ')}`,
+      req.user.id,
+      `Updated test order fields: ${changedFields.join(', ')}`,
       { changed_fields: changedFields }
     );
 
-    res.json({ success: true, data: updated });
+    sendResponse(
+      res,
+      HTTP_STATUS.OK,
+      true,
+      MESSAGES.UPDATED,
+      result
+    );
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to update test order' });
+    console.error('Error updating test order:', error);
+    
+    sendResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      false,
+      MESSAGES.INTERNAL_ERROR,
+      undefined,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -243,557 +618,78 @@ export const updateOrder = async (req: Request, res: Response) => {
  *       404:
  *         description: Test order not found
  */
-export const deleteOrder = async (req: Request, res: Response) => {
+export const deleteOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      sendResponse(
+        res,
+        HTTP_STATUS.UNAUTHORIZED,
+        false,
+        MESSAGES.UNAUTHORIZED
+      );
+      return;
+    }
+
     const id = req.params.id;
-    
+    if (!ObjectId.isValid(id)) {
+      sendResponse(
+        res,
+        HTTP_STATUS.BAD_REQUEST,
+        false,
+        MESSAGES.INVALID_FORMAT
+      );
+      return;
+    }
+
     // Fetch test order info before delete
     const testOrder = await getTestOrderById(id);
-    
-    const ok = await deleteTestOrder(id);
-    if (!ok) return res.status(404).json({ success: false, message: 'Order not found or delete failed' });
-    
-    // Log event
-    const user = (req as any).user;
-    const userId = user && user.id ? user.id : undefined;
-    await logEvent(
-      'DELETE',
-      'TestOrder',
-      id,
-      userId,
-      `Deleted test order #${testOrder?.order_number}`,
-      { order_number: testOrder?.order_number }
-    );
-
-    res.json({ success: true, message: 'Deleted' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to delete test order' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/{id}/comments:
- *   post:
- *     tags:
- *       - TestOrders
- *     summary: Add comment to test order
- *     description: Add a comment to a test order (3.5.3)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Test order ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - comment_text
- *             properties:
- *               comment_text:
- *                 type: string
- *                 description: Comment text
- *           example:
- *             comment_text: "Sample hemolyzed, retest recommended"
- *     responses:
- *       200:
- *         description: Comment added successfully
- *       404:
- *         description: Test order not found
- *       500:
- *         description: Server error
- */
-export const addCommentToOrder = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { comment_text } = req.body;
-    const user = (req as any).user;
-    
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not authenticated' });
-    }
-
-    const userId = new ObjectId(user.id);
-    const updated = await addComment(id, comment_text, userId);
-    
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Order not found or failed to add comment' });
-    }
-
-    // Log event
-    await logEvent(
-      'UPDATE',
-      'TestOrder',
-      id,
-      userId,
-      `Added comment to test order #${updated.order_number}`,
-      { order_number: updated.order_number, comment: comment_text }
-    );
-
-    res.json({ success: true, message: 'Comment added', data: updated });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to add comment' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/{id}/comments/{commentIndex}:
- *   put:
- *     tags:
- *       - TestOrders
- *     summary: Update comment in test order
- *     description: Update a specific comment in a test order
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Test order ID
- *       - in: path
- *         name: commentIndex
- *         required: true
- *         schema:
- *           type: integer
- *         description: Comment index in array
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - comment_text
- *             properties:
- *               comment_text:
- *                 type: string
- *           example:
- *             comment_text: "Updated: Sample reprocessed successfully"
- *     responses:
- *       200:
- *         description: Comment updated successfully
- *       404:
- *         description: Test order not found
- */
-export const updateCommentInOrder = async (req: Request, res: Response) => {
-  try {
-    const { id, commentIndex } = req.params;
-    const { comment_text } = req.body;
-    const user = (req as any).user;
-    
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not authenticated' });
-    }
-
-    const userId = new ObjectId(user.id);
-    const index = parseInt(commentIndex);
-    
-    if (isNaN(index) || index < 0) {
-      return res.status(400).json({ success: false, error: 'Invalid comment index' });
-    }
-
-    const updated = await updateComment(id, index, comment_text, userId);
-    
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Order not found or failed to update comment' });
-    }
-
-    // Log event
-    await logEvent(
-      'UPDATE',
-      'TestOrder',
-      id,
-      userId,
-      `Updated comment ${index} in test order #${updated.order_number}`,
-      { order_number: updated.order_number, comment_index: index }
-    );
-
-    res.json({ success: true, message: 'Comment updated', data: updated });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to update comment' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/{id}/comments/{commentIndex}:
- *   delete:
- *     tags:
- *       - TestOrders
- *     summary: Delete comment from test order
- *     description: Soft delete a comment (set deleted_at field)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Test order ID
- *       - in: path
- *         name: commentIndex
- *         required: true
- *         schema:
- *           type: integer
- *         description: Comment index in array
- *     responses:
- *       200:
- *         description: Comment deleted successfully
- *       404:
- *         description: Test order not found
- */
-export const deleteCommentFromOrder = async (req: Request, res: Response) => {
-  try {
-    const { id, commentIndex } = req.params;
-    const user = (req as any).user;
-    
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not authenticated' });
-    }
-
-    const userId = new ObjectId(user.id);
-    const index = parseInt(commentIndex);
-    
-    if (isNaN(index) || index < 0) {
-      return res.status(400).json({ success: false, error: 'Invalid comment index' });
-    }
-
-    const updated = await deleteComment(id, index, userId);
-    
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Order not found or failed to delete comment' });
-    }
-
-    // Log event
-    await logEvent(
-      'DELETE',
-      'TestOrder',
-      id,
-      userId,
-      `Deleted comment ${index} from test order #${updated.order_number}`,
-      { order_number: updated.order_number, comment_index: index }
-    );
-
-    res.json({ success: true, message: 'Comment deleted', data: updated });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: 'Failed to delete comment' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/process-sample:
- *   post:
- *     tags:
- *       - TestOrders
- *     summary: Process blood sample by barcode
- *     description: |
- *       Create or find test order by barcode (3.6.1.2)
- *       - If barcode exists, returns existing order
- *       - If not, auto-creates new order with pending status
- *       - Checks instrument mode = 'ready'
- *       - Validates reagent levels
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - barcode
- *               - instrument_id
- *             properties:
- *               barcode:
- *                 type: string
- *               instrument_id:
- *                 type: string
- *           example:
- *             barcode: "BC-SAMPLE001"
- *             instrument_id: "64f9e2c2b1a5d4f6e8c11111"
- *     responses:
- *       200:
- *         description: Sample processed successfully
- *       400:
- *         description: Validation error (instrument not ready, insufficient reagents)
- *       500:
- *         description: Server error
- */
-export const processSampleOrder = async (req: Request, res: Response) => {
-  try {
-    const { barcode, instrument_id } = req.body;
-    const user = (req as any).user;
-    
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not authenticated' });
-    }
-
-    if (!barcode || !instrument_id) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'barcode and instrument_id are required' 
-      });
-    }
-
-    const userId = new ObjectId(user.id);
-    const result = await processSample(barcode, instrument_id, userId);
-    
-    if (!result) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Failed to process sample. Check instrument status and reagent levels.' 
-      });
-    }
-
-    // Log event only if new order created
-    if (result.isNew) {
-      await logEvent(
-        'CREATE',
-        'TestOrder',
-        result.order._id,
-        userId,
-        `Auto-created test order #${result.order.order_number} from sample barcode: ${barcode}`,
-        { order_number: result.order.order_number, barcode, is_auto_created: true }
+    if (!testOrder) {
+      sendResponse(
+        res,
+        HTTP_STATUS.NOT_FOUND,
+        false,
+        MESSAGES.NOT_FOUND
       );
+      return;
     }
 
-    res.json({ 
-      success: true, 
-      message: result.isNew ? 'Test order created from barcode' : 'Existing test order found',
-      data: result.order,
-      isNew: result.isNew
-    });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to process sample' 
-    });
-  }
-};
+    const result = await deleteTestOrder(id);
 
-/**
- * @openapi
- * /test-orders/{id}/results:
- *   put:
- *     tags:
- *       - TestOrders
- *     summary: Add test results to order
- *     description: Add test results with automatic flagging based on parameter normal ranges
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               results:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     parameter_id:
- *                       type: string
- *                     result_value:
- *                       type: number
- *                     unit:
- *                       type: string
- *     responses:
- *       200:
- *         description: Results added successfully
- */
-export const addResultsToOrder = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { results } = req.body;
-    const user = (req as any).user;
-
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not authenticated' });
+    if (!result) {
+      sendResponse(
+        res,
+        HTTP_STATUS.BAD_REQUEST,
+        false,
+        MESSAGES.DB_DELETE_ERROR
+      );
+      return;
     }
 
-    const userId = new ObjectId(user.id);
-    const updated = await addTestResults(id, results, userId);
+    await logEvent(
+      'DELETE',
+      'TestOrder',
+      id,
+      req.user.id,
+      `Deleted test order`,
+      { test_order_id: id }
+    );
 
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Failed to add results' });
-    }
-
-    res.json({ success: true, message: 'Results added', data: updated });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to add results' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/{id}/complete:
- *   post:
- *     tags:
- *       - TestOrders
- *     summary: Complete test order
- *     description: Mark order as completed and track reagent usage
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reagent_usage:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     reagent_lot_number:
- *                       type: string
- *                     quantity_used:
- *                       type: number
- *     responses:
- *       200:
- *         description: Order completed successfully
- */
-export const completeOrder = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { reagent_usage } = req.body;
-    const user = (req as any).user;
-
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not authenticated' });
-    }
-
-    const userId = new ObjectId(user.id);
-    const updated = await completeTestOrder(id, userId, reagent_usage);
-
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Failed to complete order' });
-    }
-
-    await logEvent('UPDATE', 'TestOrder', id, userId, `Completed test order #${updated.order_number}`, { order_number: updated.order_number });
-
-    res.json({ success: true, message: 'Order completed', data: updated });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to complete order' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/export:
- *   get:
- *     tags:
- *       - TestOrders
- *     summary: Export test orders to Excel
- *     description: Export test orders with filtering (3.5.4.1)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: month
- *         schema:
- *           type: string
- *           example: "2025-10"
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *       - in: query
- *         name: patient_name
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Excel file downloaded
- */
-export const exportOrdersToExcel = async (req: Request, res: Response) => {
-  try {
-    const { month, status, patient_name } = req.query;
+    sendResponse(
+      res,
+      HTTP_STATUS.OK,
+      true,
+      MESSAGES.DELETED
+    );
+  } catch (error) {
+    console.error('Error deleting test order:', error);
     
-    const buffer = await exportToExcel({
-      month: month as string,
-      status: status as string,
-      patient_name: patient_name as string
-    });
-
-    const filename = `Test Orders-${new Date().toISOString().split('T')[0]}.xlsx`;
-    
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(buffer);
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to export Excel' });
-  }
-};
-
-/**
- * @openapi
- * /test-orders/{id}/print:
- *   get:
- *     tags:
- *       - TestOrders
- *     summary: Print test order results as PDF
- *     description: Generate PDF report for completed test order (3.5.4.2)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: PDF generated successfully
- *       400:
- *         description: Order not completed or not found
- */
-export const printOrderToPDF = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    
-    const html = await printToPDF(id);
-
-    // In production, use puppeteer or pdfkit to convert HTML to PDF
-    // For MVP, return HTML that can be printed
-    res.setHeader('Content-Type', 'text/html');
-    res.send(html);
-  } catch (error: any) {
-    console.error(error);
-    res.status(400).json({ success: false, error: error.message || 'Failed to generate PDF' });
+    sendResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      false,
+      MESSAGES.INTERNAL_ERROR,
+      undefined,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };

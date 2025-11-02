@@ -8,6 +8,7 @@ import {
   TestOrderDocument,
   UpdateTestOrderWithPatientInput
 } from "../models/TestOrder";
+import { QueryResult } from "../utils/database.helper";
 
 const COLLECTION = "test_orders";
 const PATIENT_COLLECTION = 'patients';
@@ -15,7 +16,7 @@ const PATIENT_COLLECTION = 'patients';
 export const createTestOrder = async (
   input: CreateTestOrderInput & { patient_email: string; instrument_name?: string },
   createdBy: string | ObjectId
-): Promise<TestOrderDocument> => {
+): Promise<QueryResult<TestOrderDocument>> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   const patientCollection = getCollection<any>(PATIENT_COLLECTION);
   const now = new Date();
@@ -23,8 +24,11 @@ export const createTestOrder = async (
   // 🔍 1. Tìm bệnh nhân theo email
   const patient = await patientCollection.findOne({ email: input.patient_email });
   if (!patient) {
-    throw new Error(`Patient with email "${input.patient_email}" not found`);
-    
+    return {
+      success: false,
+      error: `Patient with email "${input.patient_email}" not found`,
+      statusCode: 400
+    };
   }
 
   // 🔍 Resolve instrument: prefer explicit instrument_id, otherwise try instrument_name
@@ -33,9 +37,18 @@ export const createTestOrder = async (
   if (input.instrument_id) {
     resolvedInstrumentId = new ObjectId(String(input.instrument_id));
   } else if (input.instrument_name) {
-    const instrument = await instrumentCollection.findOne({ instrument_name: input.instrument_name });
+    const instrument = await instrumentCollection.findOne({
+      $or: [
+        { instrument_name: input.instrument_name },
+        { name: input.instrument_name }
+      ]
+    });
     if (!instrument) {
-      throw new Error(`Instrument with name "${input.instrument_name}" not found`);
+      return {
+        success: false,
+        error: `Instrument with name "${input.instrument_name}" not found`,
+        statusCode: 400
+      };
     }
     resolvedInstrumentId = instrument._id instanceof ObjectId ? instrument._id : new ObjectId(String(instrument._id));
   }
@@ -51,7 +64,7 @@ export const createTestOrder = async (
   const newOrder: ITestOrder = {
     order_number: orderNumber,
     patient_id: new ObjectId(patient._id),  // 👈 gán id từ bệnh nhân tìm được
-  instrument_id: resolvedInstrumentId,
+    instrument_id: resolvedInstrumentId,
     barcode,
     status: "pending",
     test_results: [],
@@ -64,14 +77,48 @@ export const createTestOrder = async (
     updated_by: createdById,
   };
 
-  // ✅ 5. Insert vào DB
-  const result = await collection.insertOne(newOrder as TestOrderDocument);
+  try {
+    // ✅ 5. Insert vào DB
+    const result = await collection.insertOne(newOrder as unknown as TestOrderDocument);
+    if (!result.insertedId) {
+      console.error('Insert failed - no insertedId returned');
+      return {
+        success: false,
+        error: "Failed to create test order",
+        statusCode: 500
+      };
+    }
 
-  // ✅ 6. Lấy lại document vừa insert
-  const inserted = await collection.findOne({ _id: result.insertedId });
-  if (!inserted) throw new Error("Failed to create test order");
+    // ✅ 6. Lấy lại document vừa insert để verify và return
+    const inserted = await collection.findOne({ _id: result.insertedId });
+    if (!inserted) {
+      console.error('Insert succeeded but document not found after insert', { insertedId: result.insertedId });
+      return {
+        success: false,
+        error: "Failed to create test order: document not found after insert",
+        statusCode: 500
+      };
+    }
 
-  return inserted as TestOrderDocument;
+    console.log('Successfully created test order:', { 
+      orderId: inserted._id,
+      orderNumber: inserted.order_number,
+      patientId: inserted.patient_id,
+      instrumentId: inserted.instrument_id
+    });
+
+    return {
+      success: true,
+      data: inserted as TestOrderDocument
+    };
+  } catch (err) {
+    console.error('DB error creating test order:', err);
+    return {
+      success: false,
+      error: "Failed to create test order",
+      statusCode: 500
+    };
+  }
 };
 
 export const getAllTestOrders = async (): Promise<any[]> => {
