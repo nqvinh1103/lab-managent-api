@@ -1,13 +1,13 @@
 import { Router } from 'express';
+import { PRIVILEGES } from '~/constants/privileges';
+import { authMiddleware, checkPrivilege } from '~/middlewares/auth.middleware';
+import { validationMiddleware } from '~/middlewares/validation.middleware';
 import {
-  storeRawResult,
+  deleteRawResult,
   getAllRawResults,
   getRawResultById,
-  deleteRawResult
+  storeRawResult
 } from '../../controllers/rawTestResult.controller';
-import { authMiddleware, checkPrivilege } from '~/middlewares/auth.middleware';
-import { PRIVILEGES } from '~/constants/privileges';
-import { validationMiddleware } from '~/middlewares/validation.middleware';
 
 const router = Router();
 
@@ -24,7 +24,7 @@ router.post(
 router.get(
   '/',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.VIEW_MONITORING]),
+  checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
   getAllRawResults
 );
 
@@ -32,7 +32,7 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.VIEW_MONITORING]),
+  checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
   getRawResultById
 );
 
@@ -40,7 +40,7 @@ router.get(
 router.delete(
   '/:id',
   authMiddleware,
-  checkPrivilege([PRIVILEGES.DELETE_BACKUP_DATA]),
+  checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
   deleteRawResult
 );
 
