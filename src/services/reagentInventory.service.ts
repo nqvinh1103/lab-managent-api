@@ -16,6 +16,39 @@ export class ReagentInventoryService {
     return getCollection<ReagentInventoryDocument>('reagent_inventory');
   }
 
+  /**
+   * Check if a reagent_id + lot_number combination already exists
+   * @param reagentId - Reagent ID
+   * @param lotNumber - Lot number
+   * @param excludeInventoryId - Optional inventory ID to exclude from check (for update case)
+   * @returns Object with isDuplicate flag and existing inventory if found
+   */
+  private async checkDuplicateReagentLot(
+    reagentId: ObjectId,
+    lotNumber: string,
+    excludeInventoryId?: ObjectId
+  ): Promise<{ isDuplicate: boolean; existingInventory?: ReagentInventoryDocument }> {
+    const query: any = {
+      reagent_id: reagentId,
+      lot_number: lotNumber
+    };
+
+    if (excludeInventoryId) {
+      query._id = { $ne: excludeInventoryId };
+    }
+
+    const existing = await this.getCollection().findOne(query);
+
+    if (existing) {
+      return {
+        isDuplicate: true,
+        existingInventory: existing
+      };
+    }
+
+    return { isDuplicate: false };
+  }
+
   async create(
     data: CreateReagentInventoryInput,
     userId: string | ObjectId
@@ -44,6 +77,15 @@ export class ReagentInventoryService {
         return {
           success: false,
           error: 'Reagent not found'
+        };
+      }
+
+      // Check for duplicate reagent_id + lot_number
+      const duplicateCheck = await this.checkDuplicateReagentLot(reagentId, data.lot_number);
+      if (duplicateCheck.isDuplicate) {
+        return {
+          success: false,
+          error: `Duplicate lot number "${data.lot_number}" already exists for this reagent`
         };
       }
 
@@ -405,6 +447,31 @@ export class ReagentInventoryService {
           success: false,
           error: 'Invalid inventory ID'
         };
+      }
+
+      // Get current inventory to check existence and get reagent_id
+      const inventory = await this.getCollection().findOne({ _id: objectId });
+      if (!inventory) {
+        return {
+          success: false,
+          error: 'Reagent inventory not found'
+        };
+      }
+
+      // If lot_number is being updated, check for duplicate
+      if (updateData.lot_number !== undefined) {
+        const duplicateCheck = await this.checkDuplicateReagentLot(
+          inventory.reagent_id,
+          updateData.lot_number,
+          objectId // Exclude current inventory
+        );
+
+        if (duplicateCheck.isDuplicate) {
+          return {
+            success: false,
+            error: `Duplicate lot number "${updateData.lot_number}" already exists for this reagent`
+          };
+        }
       }
 
       // Validate expiration_date if provided
