@@ -20,13 +20,13 @@ export const createTestOrder = async (
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   const patientCollection = getCollection<any>(PATIENT_COLLECTION);
   const now = new Date();
-
   // 🔍 1. Tìm bệnh nhân theo email
   const patient = await patientCollection.findOne({ email: input.patient_email });
+  console.log("patient vvvvvvvvvvvvvvvvvvvvvvv", input.patient_email, patient);
   if (!patient) {
     return {
       success: false,
-      error: `Patient with email "${input.patient_email}" not found`,
+      error: `Patient with email ot found`,
       statusCode: 400
     };
   }
@@ -46,10 +46,11 @@ export const createTestOrder = async (
     if (!instrument) {
       return {
         success: false,
-        error: `Instrument with name "${input.instrument_name}" not found`,
+        error: `Instrument with name not found`,
         statusCode: 400
       };
     }
+    console.log('Resolved instrument by name:', { instrumentId: instrument._id });
     resolvedInstrumentId = instrument._id instanceof ObjectId ? instrument._id : new ObjectId(String(instrument._id));
   }
 
@@ -100,12 +101,6 @@ export const createTestOrder = async (
       };
     }
 
-    console.log('Successfully created test order:', { 
-      orderId: inserted._id,
-      orderNumber: inserted.order_number,
-      patientId: inserted.patient_id,
-      instrumentId: inserted.instrument_id
-    });
 
     return {
       success: true,
