@@ -27,7 +27,12 @@ export class UserService {
     return `ID-${year}${month}${day}-${random}`;
   }
 
-  private async checkDuplicateFields(email: string, phone?: string, excludeUserId?: ObjectId): Promise<{ isDuplicate: boolean; field?: string; }> {
+  private async checkDuplicateFields(
+    email: string, 
+    phone?: string, 
+    identityNumber?: string,
+    excludeUserId?: ObjectId
+  ): Promise<{ isDuplicate: boolean; field?: string; }> {
     // Check email
     const emailUser = await this.collection.findOne({ 
       email: email.toLowerCase(),
@@ -48,17 +53,36 @@ export class UserService {
       }
     }
 
+    // Check identity number if provided
+    if (identityNumber) {
+      const identityUser = await this.collection.findOne({
+        identity_number: identityNumber,
+        ...excludeUserId && { _id: { $ne: excludeUserId } }
+      });
+      if (identityUser) {
+        return { isDuplicate: true, field: 'identity_number' };
+      }
+    }
+
     return { isDuplicate: false };
   }
 
   async create(userData: CreateUserInput): Promise<QueryResult<UserDocument>> {
     try {
-      // Check for duplicate email and phone
-      const { isDuplicate, field } = await this.checkDuplicateFields(userData.email, userData.phone_number);
+      // Check for duplicate email, phone, and identity number
+      const { isDuplicate, field } = await this.checkDuplicateFields(
+        userData.email, 
+        userData.phone_number,
+        userData.identity_number
+      );
       if (isDuplicate) {
+        let errorMessage = 'Email already exists';
+        if (field === 'phone_number') errorMessage = 'Phone number already exists';
+        if (field === 'identity_number') errorMessage = 'Identity number already exists';
+        
         return {
           success: false,
-          error: field === 'email' ? 'Email already exists' : 'Phone number already exists',
+          error: errorMessage,
           statusCode: 409 // Conflict status code
         };
       }
@@ -220,17 +244,22 @@ export class UserService {
         };
       }
 
-      // Check for duplicate email/phone if being updated
-      if (updateData.email || updateData.phone_number) {
+      // Check for duplicate email/phone/identity if being updated
+      if (updateData.email || updateData.phone_number || updateData.identity_number) {
         const { isDuplicate, field } = await this.checkDuplicateFields(
           updateData.email || '', 
           updateData.phone_number,
+          updateData.identity_number,
           objectId // Exclude current user from duplicate check
         );
         if (isDuplicate) {
+          let errorMessage = 'Email already exists';
+          if (field === 'phone_number') errorMessage = 'Phone number already exists';
+          if (field === 'identity_number') errorMessage = 'Identity number already exists';
+          
           return {
             success: false,
-            error: field === 'email' ? 'Email already exists' : 'Phone number already exists',
+            error: errorMessage,
             statusCode: 409
           };
         }

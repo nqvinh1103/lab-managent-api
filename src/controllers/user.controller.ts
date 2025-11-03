@@ -23,7 +23,17 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().create(userData);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
+      // Handle duplicate email/phone specific errors with 409 Conflict status
+      if (result.error?.includes('already exists')) {
+        res.status(HTTP_STATUS.CONFLICT).json({
+          success: false,
+          message: result.error,
+          error: result.error
+        });
+        return;
+      }
+      
+      res.status(result.statusCode || HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: MESSAGES.DB_SAVE_ERROR,
         error: result.error
@@ -135,7 +145,17 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().findByIdAndUpdate(id, updateData);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
+      // Handle duplicate email/phone specific errors with 409 Conflict status
+      if (result.error?.includes('already exists')) {
+        res.status(HTTP_STATUS.CONFLICT).json({
+          success: false,
+          message: result.error,
+          error: result.error
+        });
+        return;
+      }
+      
+      res.status(result.statusCode || HTTP_STATUS.NOT_FOUND).json({
         success: false,
         message: MESSAGES.DB_UPDATE_ERROR,  
         error: result.error
