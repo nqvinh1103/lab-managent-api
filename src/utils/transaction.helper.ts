@@ -1,4 +1,4 @@
-import { ClientSession, MongoError } from 'mongodb';
+import { ClientSession, MongoError, MongoServerError } from 'mongodb';
 import { getClient } from '../config/database';
 
 export type TransactionCallback<T> = (session: ClientSession) => Promise<T>;
@@ -46,13 +46,15 @@ export async function withTransaction<T>(
     // Transaction automatically aborted
     if (error instanceof MongoError) {
       // Handle specific transaction errors
-      if (error.code === 50 || error.codeName === 'MaxTimeMSExpired') {
+      const errorCode = typeof error.code === 'number' ? error.code : 0;
+      
+      if (errorCode === 50 || (error instanceof MongoServerError && error.codeName === 'MaxTimeMSExpired')) {
         throw new Error('Transaction timeout: Operation took too long to complete');
       }
-      if (error.code === 251 || error.codeName === 'NoSuchTransaction') {
+      if (errorCode === 251 || (error instanceof MongoServerError && error.codeName === 'NoSuchTransaction')) {
         throw new Error('Transaction error: No active transaction');
       }
-      if (error.code === 117 || error.codeName === 'Interrupted') {
+      if (errorCode === 117 || (error instanceof MongoServerError && error.codeName === 'Interrupted')) {
         throw new Error('Transaction error: Operation was interrupted');
       }
     }
@@ -81,7 +83,8 @@ export function isTransientTransactionError(error: unknown): boolean {
     133, // TransientTransactionError
   ];
 
-  return transientCodes.includes(error.code || 0) || 
+  const errorCode = typeof error.code === 'number' ? error.code : 0;
+  return transientCodes.includes(errorCode) || 
          error.errorLabels?.includes('TransientTransactionError') === true;
 }
 
