@@ -24,12 +24,12 @@ export const generateHL7Message = async (
   const timestamp = formatHL7Timestamp(now);
 
   // MSH Segment - Message Header
-  // MSH|^~\&|SendingApp|ReceivingApp|SendingFacility|ReceivingFacility|DateTime|Security|MessageType|MessageControlID|ProcessingID|VersionID|SequenceNumber|ContinuationPointer|AcceptAcknowledgmentType|ApplicationAcknowledgmentType|CountryCode|CharacterSet|PrincipalLanguageOfMessage|AlternateCharacterSetHandlingScheme
+
   const mshSegment = `MSH|^~\\&|${instrument?.instrument_name || 'Instrument'}|TestOrderService|Lab|Lab|${timestamp}||ORU^R01|${messageId}|P|2.3`;
   segments.push(mshSegment);
 
   // PID Segment - Patient Identification
-  // PID|SetID|PatientID|PatientIdentifierList|AlternatePatientID|PatientName|MotherMaidenName|DateOfBirth|Sex|PatientAlias|Race|Address|PhoneNumber|PhoneNumberBusiness|PrimaryLanguage|MaritalStatus|Religion|PatientAccountNumber|SSN|DriverLicenseNumber|MotherIdentifier|EthnicGroup|BirthPlace|MultipleBirthIndicator|BirthOrder|Citizenship|VeteransMilitaryStatus|Nationality|PatientDeathDate|PatientDeathIndicator|IdentityUnknownIndicator|IdentityReliabilityCode|LastUpdateDateTime|LastUpdateFacility|SpeciesCode|BreedCode|Strain|ProductionClassCode|TribalCitizenship
+
   if (patient) {
     let dob = '';
     if (patient.date_of_birth) {
@@ -50,12 +50,12 @@ export const generateHL7Message = async (
   }
 
   // OBR Segment - Observation Request
-  // OBR|SetID|PlacerOrderNumber|FillerOrderNumber|UniversalServiceIdentifier|Priority|RequestedDateTime|ObservationDateTime|ObservationEndDateTime|CollectionVolume|CollectorIdentifier|SpecimenActionCode|DangerCode|RelevantClinicalInfo|SpecimenReceivedDateTime|SpecimenSource|OrderingProvider|OrderCallbackPhoneNumber|PlacerField1|PlacerField2|FillerField1|FillerField2|ResultsRptStatusChngDateTime|ChargeToPractice|DiagnosticServSectID|ResultStatus|ParentResult|QuantityTiming|ResultCopiesTo|Parent|TransportationMode|ReasonForStudy|PrincipalResultInterpreter|AssistantResultInterpreter|Technician|Transcriptionist|ScheduledDateTime|NumberOfSampleContainers|TransportLogisticsOfCollectedSample|CollectorsComment|TransportArrangementResponsibility|TransportArranged|EscortRequired|PlannedPatientTransportComment|ProcedureCode|ProcedureCodeModifier|PlacerSupplementalServiceInformation|FillerSupplementalServiceInformation|MedicallyNecessaryDuplicateProcedureReason|ResultHandling|ParentUniversalServiceIdentifier
+
   const obrSegment = `OBR|1||${testOrder.barcode || ''}|||${timestamp}|||${testOrder.order_number || ''}|||${testOrder.instrument_id?.toString() || ''}||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||`;
   segments.push(obrSegment);
 
   // OBX Segments - Observation Results (one per parameter)
-  // OBX|SetID|ValueType|ObservationIdentifier|ObservationSubID|ObservationValue|Units|ReferenceRange|AbnormalFlags|Probability|NatureOfAbnormalTest|ObservationResultStatus|DateLastObsNormalValues|UserDefinedAccessChecks|DateTimeOfObservation|ProducersID|ResponsibleObserver|ObservationMethod|EquipmentInstanceIdentifier|DateTimeOfAnalysis|ReservedForHarmonizationWithV2.6|ReservedForHarmonizationWithV2.7|ReservedForHarmonizationWithV2.8
+
   rawTestResults.forEach((result, index) => {
     const setID = index + 1;
     const valueType = 'NM'; // Numeric

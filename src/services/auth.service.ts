@@ -150,7 +150,7 @@ export class AuthService {
     }
   }
 
-  async refreshToken(userId: string): Promise<QueryResult<{ token: string; privileges: string[] }>> {
+  async refreshToken(userId: string): Promise<QueryResult<{ token: string; user: { id: string; email: string; full_name: string; roles: string[]; privileges: string[] }; privileges: string[] }>> {
     try {
       const objectId = toObjectId(userId);
       
@@ -212,9 +212,20 @@ export class AuthService {
 
       const token = signToken(tokenPayload);
 
+      // Return user info similar to login response
       return {
         success: true,
-        data: { token, privileges: privilegeCodes }
+        data: {
+          token,
+          user: {
+            id: user._id.toString(),
+            email: user.email,
+            full_name: user.full_name,
+            roles: roleCodes,
+            privileges: privilegeCodes
+          },
+          privileges: privilegeCodes
+        }
       };
 
     } catch (error) {
