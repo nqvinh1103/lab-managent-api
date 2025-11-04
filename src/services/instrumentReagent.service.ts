@@ -25,9 +25,19 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
     throw new Error('Invalid user ID');
   }
 
-  // Validate reagent_inventory_id exists
+  // Validate and convert instrument_id to ObjectId
+  const instrumentObjectId = toObjectId(data.instrument_id);
+  if (!instrumentObjectId) {
+    throw new Error('Invalid instrument ID');
+  }
+
+  // Validate and convert reagent_inventory_id to ObjectId
   if (!data.reagent_inventory_id) {
     throw new Error('reagent_inventory_id is required');
+  }
+  const reagentInventoryObjectId = toObjectId(data.reagent_inventory_id);
+  if (!reagentInventoryObjectId) {
+    throw new Error('Invalid reagent inventory ID');
   }
 
   // Validate quantity must be greater than 0
@@ -37,7 +47,7 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
 
   // Get inventory and validate (outside transaction for initial checks)
   const inventoryService = new ReagentInventoryService();
-  const inventoryResult = await inventoryService.findById(data.reagent_inventory_id);
+  const inventoryResult = await inventoryService.findById(reagentInventoryObjectId);
   
   if (!inventoryResult.success || !inventoryResult.data) {
     throw new Error('Reagent inventory not found');
@@ -61,7 +71,7 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
     // Atomic stock deduction - prevents race conditions
     // This will return null if insufficient stock, causing transaction to fail
     const updatedInventory = await inventoryService.atomicDeductStock(
-      data.reagent_inventory_id,
+      reagentInventoryObjectId,
       data.quantity,
       session
     );
@@ -75,8 +85,8 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
 
     // Populate master data and inventory data
     const docToInsert: IInstrumentReagent = {
-      instrument_id: data.instrument_id,
-      reagent_inventory_id: data.reagent_inventory_id,
+      instrument_id: instrumentObjectId, // Ensure it's ObjectId
+      reagent_inventory_id: reagentInventoryObjectId, // Ensure it's ObjectId
       reagent_id: inventory.reagent_id,
       // Master data from Reagent
       reagent_name: reagent.reagent_name,

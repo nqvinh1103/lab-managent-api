@@ -2,6 +2,7 @@ import { Router } from 'express'
 import authRoutes from './modules/auth.route'
 import configurationRoutes from './modules/configuration.route'
 import eventLogRoutes from './modules/eventLog.route'
+import flaggingConfigurationRoutes from './modules/flaggingConfiguration.route'
 import instrumentRoutes from './modules/instrument.route'
 import instrumentReagentRoutes from './modules/instrumentReagent.route'
 import parameterRoutes from './modules/parameter.route'
@@ -67,5 +68,8 @@ router.use('/monitoring/raw-results', rawTestResultRoutes)
 
 // Event Log routes
 router.use('/event-logs', eventLogRoutes)
+
+// Flagging Configuration routes
+router.use('/flagging-configurations', flaggingConfigurationRoutes)
 
 export default router

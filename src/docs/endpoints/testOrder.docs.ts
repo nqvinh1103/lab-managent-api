@@ -557,6 +557,12 @@
  *     description: |
  *       Mark order as completed and track reagent usage.
  *       Updates order status to "completed", sets run_by and run_at fields.
+ *       Tracks reagent usage by deducting quantity_used from InstrumentReagent.quantity_remaining.
+ *       
+ *       **Status Transitions:**
+ *       - 'pending' → 'completed' (manual completion without sync)
+ *       - 'running' → 'completed' (after syncing raw test results)
+ *       
  *       **Required Privilege:** EXECUTE_BLOOD_TESTING
  *     tags: [TestOrders]
  *     security:
@@ -585,11 +591,22 @@
  *
  * /test-orders/process-sample:
  *   post:
- *     summary: Process blood sample by barcode
+ *     summary: Process blood sample by barcode (3.6.1.2 + 3.6.1.3)
  *     description: |
  *       Create or find test order by barcode. If barcode exists, returns existing order.
  *       If not, auto-creates new order with pending status.
- *       Checks instrument mode = 'ready' and validates reagent levels.
+ *       
+ *       **Validation:**
+ *       - Checks instrument mode = 'ready'
+ *       - Validates that all 5 required reagent types are installed: Diluent, Lysing, Staining, Clotting, Cleaner
+ *       - Validates that each reagent type has quantity_remaining > 0
+ *       - Returns specific error messages if reagents are missing or insufficient
+ *       
+ *       After successful validation, automatically:
+ *       - Generates raw test results from all active parameters
+ *       - Converts raw results to HL7 message format (MSH, PID, OBR, OBX segments)
+ *       - Saves HL7 message to RawTestResult collection (status: 'pending')
+ *       
  *       **Required Privilege:** CREATE_TEST_ORDER
  *     tags: [TestOrders]
  *     security:
@@ -605,7 +622,23 @@
  *             instrument_id: "64f9e2c2b1a5d4f6e8c11111"
  *     responses:
  *       200:
- *         description: Sample processed successfully
+ *         description: Sample processed successfully, raw test result created with HL7 message
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order:
+ *                       $ref: '#/components/schemas/TestOrder'
+ *                     isNew:
+ *                       type: boolean
+ *                       description: true if order was newly created, false if existing
  *       400:
  *         description: Validation error (instrument not ready, insufficient reagents)
  *
@@ -656,5 +689,117 @@
  *         description: PDF generated successfully
  *       400:
  *         description: Order not completed or not found
+ *
+ * /test-orders/sync-raw-result/{rawResultId}:
+ *   post:
+ *     summary: Sync raw test result (3.6.1.4)
+ *     description: |
+ *       Parse HL7 message from raw test result, apply flagging configuration (3.5.2.5),
+ *       and add test results to test order. This endpoint:
+ *       - Parses HL7 message to extract test results
+ *       - Matches parameter codes with parameter IDs
+ *       - Applies flagging configuration based on gender and age group
+ *       - Adds test results to test order with flags (including flag_type and flagging_configuration_id)
+ *       - Sets test order status to 'running' (not 'completed')
+ *       - Updates raw test result status to 'synced'
+ *       - Sets can_delete = true after successful sync
+ *       
+ *       **Note:** After syncing, test order status will be 'running'. 
+ *       Call `/test-orders/{id}/complete` to finalize the order and track reagent usage.
+ *       **Required Privilege:** EXECUTE_BLOOD_TESTING
+ *     tags: [TestOrders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: rawResultId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Raw test result ID (MongoDB ObjectId)
+ *         example: "671f8a36e9e9f84ef4a12345"
+ *     responses:
+ *       200:
+ *         description: Raw test result synced successfully, test results added to test order
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Updated successfully"
+ *                 data:
+ *                   $ref: '#/components/schemas/TestOrder'
+ *             example:
+ *               success: true
+ *               message: "Updated successfully"
+ *               data:
+ *                 _id: "507f1f77bcf86cd799439011"
+ *                 order_number: "ORD-1704067200000"
+ *                 status: "running"
+ *                 test_results:
+ *                   - parameter_id: "507f1f77bcf86cd799439016"
+ *                     result_value: 120.5
+ *                     unit: "mg/dL"
+ *                     reference_range_text: "70-100 mg/dL"
+ *                     is_flagged: true
+ *                     flag_type: "critical"
+ *                     flagging_configuration_id: "507f1f77bcf86cd799439017"
+ *                     measured_at: "2024-01-05T10:30:00.000Z"
+ *                 run_by: "507f1f77bcf86cd799439015"
+ *                 run_at: "2024-01-05T10:30:00.000Z"
+ *       400:
+ *         description: Bad request - Invalid raw result ID, already synced, or sync failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               invalid_id:
+ *                 summary: Invalid ID format
+ *                 value:
+ *                   success: false
+ *                   error: "Invalid raw result ID"
+ *               already_synced:
+ *                 summary: Already synced
+ *                 value:
+ *                   success: false
+ *                   error: "Raw test result already synced"
+ *               sync_failed:
+ *                 summary: Sync failed
+ *                 value:
+ *                   success: false
+ *                   error: "Failed to sync raw test result"
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Forbidden - Insufficient permissions (requires EXECUTE_BLOOD_TESTING privilege)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Raw test result or test order not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               error: "Raw test result not found or Test order not found for this barcode"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 
