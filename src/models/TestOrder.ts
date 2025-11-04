@@ -7,6 +7,8 @@ export interface ITestResult {
   unit: string;
   reference_range_text?: string;
   is_flagged: boolean;
+  flag_type?: 'critical' | 'warning' | 'info'; // For fast rendering (UI color coding)
+  flagging_configuration_id?: ObjectId; // For audit trail (which config was used)
   reagent_lot_number?: string;
   measured_at: Date;
 }

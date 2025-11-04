@@ -11,6 +11,7 @@ import {
   getOrders,
   printOrderToPDF,
   processSampleOrder,
+  syncRawTestResultController,
   updateCommentInOrder,
   updateOrder
 } from '../../controllers/testOrder.controller'
@@ -159,6 +160,14 @@ router.get(
   ...printTestOrderValidation,
   validationMiddleware,
   printOrderToPDF
+)
+
+// Sync raw test result (3.6.1.4)
+router.post(
+  '/sync-raw-result/:rawResultId',
+  authMiddleware,
+  checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
+  syncRawTestResultController
 )
 
 export default router

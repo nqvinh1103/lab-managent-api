@@ -25,11 +25,6 @@
  *           type: string
  *         description: Filter by reagent lot number
  *       - in: query
- *         name: reagent_inventory_id
- *         schema:
- *           type: string
- *         description: Filter by reagent inventory ID
- *       - in: query
  *         name: instrument_id
  *         schema:
  *           type: string
