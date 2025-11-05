@@ -22,6 +22,7 @@ import {
 } from '../services/testOrder.service';
 import { logEvent } from '../utils/eventLog.helper';
 import { ApiError } from '../utils/apiError';
+import { sendSuccessResponse, sendErrorResponse, handleCreateResult, handleUpdateResult, handleGetResult, handleDeleteResult } from '../utils/response.helper';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -31,30 +32,18 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
-interface ApiResponse<T = any> {
-  success: boolean;
-  message?: string;
-  data?: T;
-  error?: string;
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
 export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     // Check authentication
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     // Validate required fields
     const { patient_email, instrument_name } = req.body;
     if (!patient_email) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.REQUIRED_FIELD);
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.REQUIRED_FIELD);
       return;
     }
 
@@ -71,12 +60,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
       // Handle service result
       if (!result.success) {
         console.log('Service returned error:', result.error);
-        sendResponse(
-          res, 
-          result.statusCode || HTTP_STATUS.BAD_REQUEST,
-          false,
-          result.error || MESSAGES.DB_SAVE_ERROR
-        );
+        handleCreateResult(res, result);
         return;
       }
 
@@ -91,45 +75,19 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
       );
 
       // Send success response
-      sendResponse(
-        res,
-        HTTP_STATUS.CREATED,
-        true,
-        MESSAGES.CREATED,
-        result.data
-      );
+      sendSuccessResponse(res, HTTP_STATUS.CREATED, MESSAGES.CREATED, result.data);
     } catch (serviceError) {
       console.error('Service error creating test order:', serviceError);
       throw serviceError; // Re-throw to be caught by outer catch
     }
   } catch (error) {
     console.error('Error creating test order:', error);
-    sendResponse(
+    sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      false,
       error instanceof Error ? error.message : MESSAGES.INTERNAL_ERROR
     );
   }
-};
-
-const sendResponse = <T>(
-  res: Response,
-  statusCode: number,
-  success: boolean,
-  message: string,
-  data?: T,
-  error?: string,
-  pagination?: ApiResponse['pagination']
-): void => {
-  const response: ApiResponse<T> = {
-    success,
-    message,
-  ...(data && { data }),
-    ...(error && { error }),
-    ...(pagination && { pagination })
-  };
-  res.status(statusCode).json(response);
 };
 
 /**
@@ -161,35 +119,21 @@ const sendResponse = <T>(
 export const getOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(
-        res,
-        HTTP_STATUS.UNAUTHORIZED,
-        false,
-        MESSAGES.UNAUTHORIZED
-      );
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     const result = await getAllTestOrders();
     
-    sendResponse(
-      res,
-      HTTP_STATUS.OK,
-      true,
-      MESSAGES.SUCCESS,
-      result
-    );
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
 
     // Skip logging for read operations since they don't modify data
   } catch (error) {
     console.error('Error fetching test orders:', error);
-    
-    sendResponse(
+    sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      false,
       MESSAGES.INTERNAL_ERROR,
-      undefined,
       error instanceof Error ? error.message : 'Unknown error'
     );
   }
@@ -280,7 +224,7 @@ export const processSampleOrder = async (req: AuthenticatedRequest, res: Respons
   try {
     if (!req.user) {
       console.log('No user found, returning unauthorized');
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -293,23 +237,33 @@ export const processSampleOrder = async (req: AuthenticatedRequest, res: Respons
       
       if (!result) {
         console.error('processSample returned null');
-        sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, 'Failed to process sample');
+        sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to process sample');
         return;
       }
       
-      sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.SUCCESS, result);
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
     } catch (err) {
       console.error('Error in processSampleOrder:', err);
       if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
         const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
-        sendResponse(res, status, false, (err as any).message || MESSAGES.INTERNAL_ERROR);
+        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR);
         return;
       }
-      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
     }
   } catch (error) {
     console.error('Error processing sample (outer):', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -317,7 +271,7 @@ export const processSampleOrder = async (req: AuthenticatedRequest, res: Respons
 export const addCommentToOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -326,16 +280,21 @@ export const addCommentToOrder = async (req: AuthenticatedRequest, res: Response
 
     const created = await addComment(id, comment_text, new ObjectId(req.user.id));
     if (!created) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
       return;
     }
 
     await logEvent('CREATE', 'TestOrderComment', id, req.user.id, 'Added comment to test order', { comment_text });
 
-    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.CREATED, created);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.CREATED, created);
   } catch (error) {
     console.error('Error adding comment to order:', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -343,7 +302,7 @@ export const addCommentToOrder = async (req: AuthenticatedRequest, res: Response
 export const updateCommentInOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -353,16 +312,21 @@ export const updateCommentInOrder = async (req: AuthenticatedRequest, res: Respo
 
     const updated = await updateComment(id, idx, comment_text, new ObjectId(req.user.id));
     if (!updated) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
       return;
     }
 
     await logEvent('UPDATE', 'TestOrderComment', id, req.user.id, `Updated comment #${idx}`, { comment_text });
 
-    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
   } catch (error) {
     console.error('Error updating comment in order:', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -370,7 +334,7 @@ export const updateCommentInOrder = async (req: AuthenticatedRequest, res: Respo
 export const deleteCommentFromOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -379,16 +343,21 @@ export const deleteCommentFromOrder = async (req: AuthenticatedRequest, res: Res
 
     const updated = await deleteComment(id, idx, new ObjectId(req.user.id));
     if (!updated) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_DELETE_ERROR);
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_DELETE_ERROR);
       return;
     }
 
     await logEvent('DELETE', 'TestOrderComment', id, req.user.id, `Deleted comment #${idx}`, { comment_index: idx });
 
-    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.DELETED, updated);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED, updated);
   } catch (error) {
     console.error('Error deleting comment from order:', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -396,19 +365,19 @@ export const deleteCommentFromOrder = async (req: AuthenticatedRequest, res: Res
 export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     const { barcode } = req.body;
     if (!barcode) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, "Barcode is required");
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, "Barcode is required");
       return;
     }
 
     const { results } = req.body;
     if (!results || !Array.isArray(results) || results.length === 0) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, "Test results are required");
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, "Test results are required");
       return;
     }
 
@@ -417,14 +386,14 @@ export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response
     const testOrder = await collection.findOne({ barcode });
     
     if (!testOrder) {
-      sendResponse(res, HTTP_STATUS.NOT_FOUND, false, "No test order found with this barcode");
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, "No test order found with this barcode");
       return;
     }
 
     // Add results to the found test order
     const updated = await addTestResults(testOrder._id.toString(), results, new ObjectId(req.user.id));
     if (!updated) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
       return;
     }
 
@@ -433,10 +402,15 @@ export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response
       barcode
     });
 
-    sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
   } catch (error) {
     console.error('Error adding results to order:', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -444,7 +418,7 @@ export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response
 export const completeOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -454,25 +428,35 @@ export const completeOrder = async (req: AuthenticatedRequest, res: Response): P
     try {
       const updated = await completeTestOrder(id, new ObjectId(req.user.id), reagent_usage);
       if (!updated) {
-        sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, MESSAGES.DB_SAVE_ERROR);
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
         return;
       }
 
       await logEvent('UPDATE', 'TestOrder', id, req.user.id, 'Completed test order', { reagent_usage });
 
-      sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
     } catch (err) {
       console.error('Error completing order:', err);
       if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
         const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
-        sendResponse(res, status, false, (err as any).message || MESSAGES.INTERNAL_ERROR);
+        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR);
         return;
       }
-      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
     }
   } catch (error) {
     console.error('Error in completeOrder (outer):', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -480,7 +464,7 @@ export const completeOrder = async (req: AuthenticatedRequest, res: Response): P
 export const exportOrdersToExcel = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -497,11 +481,21 @@ export const exportOrdersToExcel = async (req: AuthenticatedRequest, res: Respon
       res.status(200).send(buffer);
     } catch (err) {
       console.error('Error exporting orders to Excel:', err);
-      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
     }
   } catch (error) {
     console.error('Error in exportOrdersToExcel (outer):', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -509,7 +503,7 @@ export const exportOrdersToExcel = async (req: AuthenticatedRequest, res: Respon
 export const printOrderToPDF = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
@@ -521,11 +515,21 @@ export const printOrderToPDF = async (req: AuthenticatedRequest, res: Response):
       res.status(200).send(html);
     } catch (err) {
       console.error('Error printing order to PDF:', err);
-      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
     }
   } catch (error) {
     console.error('Error in printOrderToPDF (outer):', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
 
@@ -563,56 +567,32 @@ export const printOrderToPDF = async (req: AuthenticatedRequest, res: Response):
 export const getOrderById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(
-        res,
-        HTTP_STATUS.UNAUTHORIZED,
-        false,
-        MESSAGES.UNAUTHORIZED
-      );
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     const id = req.params.id;
     if (!ObjectId.isValid(id)) {
-      sendResponse(
-        res,
-        HTTP_STATUS.BAD_REQUEST,
-        false,
-        MESSAGES.INVALID_FORMAT
-      );
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
       return;
     }
 
     const result = await getTestOrderById(id);
 
     if (!result) {
-      sendResponse(
-        res,
-        HTTP_STATUS.NOT_FOUND,
-        false,
-        MESSAGES.NOT_FOUND
-      );
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);
       return;
     }
 
-    sendResponse(
-      res,
-      HTTP_STATUS.OK,
-      true,
-      MESSAGES.SUCCESS,
-      result
-    );
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
 
     // Skip logging for read operations since they don't modify data
   } catch (error) {
     console.error('Error fetching test order:', error);
-    
-    sendResponse(
+    sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      false,
       MESSAGES.INTERNAL_ERROR,
-      undefined,
       error instanceof Error ? error.message : 'Unknown error'
     );
   }
@@ -648,23 +628,13 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
 export const updateOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(
-        res,
-        HTTP_STATUS.UNAUTHORIZED,
-        false,
-        MESSAGES.UNAUTHORIZED
-      );
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     const id = req.params.id;
     if (!ObjectId.isValid(id)) {
-      sendResponse(
-        res,
-        HTTP_STATUS.BAD_REQUEST,
-        false,
-        MESSAGES.INVALID_FORMAT
-      );
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
       return;
     }
 
@@ -672,12 +642,7 @@ export const updateOrder = async (req: AuthenticatedRequest, res: Response): Pro
     const result = await updateTestOrder(id, data);
 
     if (!result) {
-      sendResponse(
-        res,
-        HTTP_STATUS.NOT_FOUND,
-        false,
-        MESSAGES.NOT_FOUND
-      );
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);
       return;
     }
 
@@ -691,22 +656,13 @@ export const updateOrder = async (req: AuthenticatedRequest, res: Response): Pro
       { changed_fields: changedFields }
     );
 
-    sendResponse(
-      res,
-      HTTP_STATUS.OK,
-      true,
-      MESSAGES.UPDATED,
-      result
-    );
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, result);
   } catch (error) {
     console.error('Error updating test order:', error);
-    
-    sendResponse(
+    sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      false,
       MESSAGES.INTERNAL_ERROR,
-      undefined,
       error instanceof Error ? error.message : 'Unknown error'
     );
   }
@@ -736,47 +692,27 @@ export const updateOrder = async (req: AuthenticatedRequest, res: Response): Pro
 export const deleteOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(
-        res,
-        HTTP_STATUS.UNAUTHORIZED,
-        false,
-        MESSAGES.UNAUTHORIZED
-      );
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     const id = req.params.id;
     if (!ObjectId.isValid(id)) {
-      sendResponse(
-        res,
-        HTTP_STATUS.BAD_REQUEST,
-        false,
-        MESSAGES.INVALID_FORMAT
-      );
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
       return;
     }
 
     // Fetch test order info before delete
     const testOrder = await getTestOrderById(id);
     if (!testOrder) {
-      sendResponse(
-        res,
-        HTTP_STATUS.NOT_FOUND,
-        false,
-        MESSAGES.NOT_FOUND
-      );
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);
       return;
     }
 
     const result = await deleteTestOrder(id);
 
     if (!result) {
-      sendResponse(
-        res,
-        HTTP_STATUS.BAD_REQUEST,
-        false,
-        MESSAGES.DB_DELETE_ERROR
-      );
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_DELETE_ERROR);
       return;
     }
 
@@ -789,21 +725,13 @@ export const deleteOrder = async (req: AuthenticatedRequest, res: Response): Pro
       { test_order_id: id }
     );
 
-    sendResponse(
-      res,
-      HTTP_STATUS.OK,
-      true,
-      MESSAGES.DELETED
-    );
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED);
   } catch (error) {
     console.error('Error deleting test order:', error);
-    
-    sendResponse(
+    sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      false,
       MESSAGES.INTERNAL_ERROR,
-      undefined,
       error instanceof Error ? error.message : 'Unknown error'
     );
   }
@@ -856,20 +784,20 @@ export const deleteOrder = async (req: AuthenticatedRequest, res: Response): Pro
 export const syncRawTestResultController = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendResponse(res, HTTP_STATUS.UNAUTHORIZED, false, MESSAGES.UNAUTHORIZED);
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
       return;
     }
 
     const { rawResultId } = req.params;
     if (!rawResultId || !ObjectId.isValid(rawResultId)) {
-      sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, 'Invalid raw result ID');
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid raw result ID');
       return;
     }
 
     try {
       const updated = await syncRawTestResult(rawResultId, new ObjectId(req.user.id));
       if (!updated) {
-        sendResponse(res, HTTP_STATUS.BAD_REQUEST, false, 'Failed to sync raw test result');
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Failed to sync raw test result');
         return;
       }
 
@@ -877,18 +805,28 @@ export const syncRawTestResultController = async (req: AuthenticatedRequest, res
         test_order_id: updated._id.toString()
       });
 
-      sendResponse(res, HTTP_STATUS.OK, true, MESSAGES.UPDATED, updated);
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
     } catch (err) {
       console.error('Error in syncRawTestResultController:', err);
       if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
         const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
-        sendResponse(res, status, false, (err as any).message || MESSAGES.INTERNAL_ERROR);
+        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR);
         return;
       }
-      sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, err instanceof Error ? err.message : String(err));
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
     }
   } catch (error) {
     console.error('Error in syncRawTestResultController (outer):', error);
-    sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, false, MESSAGES.INTERNAL_ERROR, undefined, error instanceof Error ? error.message : 'Unknown error');
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };

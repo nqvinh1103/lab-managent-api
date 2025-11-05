@@ -1,5 +1,6 @@
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { ParameterDocument } from '../models/Parameter';
 import { createPaginationOptions, createSortOptions, QueryResult, toObjectId } from '../utils/database.helper';
@@ -16,7 +17,8 @@ export class ParameterService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid parameter ID'
+          error: 'Invalid parameter ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -25,7 +27,8 @@ export class ParameterService {
       if (!parameter) {
         return {
           success: false,
-          error: 'Parameter not found'
+          error: 'Parameter not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -36,7 +39,8 @@ export class ParameterService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -84,7 +88,8 @@ export class ParameterService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -100,7 +105,8 @@ export class ParameterService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

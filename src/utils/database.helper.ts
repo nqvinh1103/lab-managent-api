@@ -59,6 +59,7 @@ export type OperationResult = {
   deletedCount?: number;
   upsertedId?: ObjectId;
   error?: string;
+  statusCode?: number;
 };
 
 /**

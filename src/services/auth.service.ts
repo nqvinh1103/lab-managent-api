@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { PrivilegeDocument } from '../models/Privilege';
 import { RoleDocument } from '../models/Role';
@@ -42,7 +43,8 @@ export class AuthService {
       if (!userResult) {
         return {
           success: false,
-          error: MESSAGES.INVALID_CREDENTIALS
+          error: MESSAGES.INVALID_CREDENTIALS,
+          statusCode: HTTP_STATUS.UNAUTHORIZED
         };
       }
 
@@ -52,7 +54,8 @@ export class AuthService {
       if (user.is_locked) {
         return {
           success: false,
-          error: MESSAGES.USER_LOCKED
+          error: MESSAGES.USER_LOCKED,
+          statusCode: HTTP_STATUS.FORBIDDEN
         };
       }
 
@@ -62,7 +65,8 @@ export class AuthService {
       if (!isPasswordValid) {
         return {
           success: false,
-          error: MESSAGES.INVALID_CREDENTIALS
+          error: MESSAGES.INVALID_CREDENTIALS,
+          statusCode: HTTP_STATUS.UNAUTHORIZED
         };
       }
 
@@ -72,7 +76,8 @@ export class AuthService {
       if (roleIds.length === 0) {
         return {
           success: false,
-          error: 'User has no roles assigned'
+          error: 'User has no roles assigned',
+          statusCode: HTTP_STATUS.FORBIDDEN
         };
       }
 
@@ -84,7 +89,8 @@ export class AuthService {
       if (roles.length === 0) {
         return {
           success: false,
-          error: 'User roles not found'
+          error: 'User roles not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -145,7 +151,8 @@ export class AuthService {
       console.error('Login error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.LOGIN_FAILED
+        error: error instanceof Error ? error.message : MESSAGES.LOGIN_FAILED,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -157,7 +164,8 @@ export class AuthService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -167,7 +175,8 @@ export class AuthService {
       if (!user) {
         return {
           success: false,
-          error: MESSAGES.USER_NOT_FOUND
+          error: MESSAGES.USER_NOT_FOUND,
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -175,7 +184,8 @@ export class AuthService {
       if (user.is_locked) {
         return {
           success: false,
-          error: MESSAGES.USER_LOCKED
+          error: MESSAGES.USER_LOCKED,
+          statusCode: HTTP_STATUS.FORBIDDEN
         };
       }
 
@@ -232,7 +242,8 @@ export class AuthService {
       console.error('Refresh token error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to refresh token'
+        error: error instanceof Error ? error.message : 'Failed to refresh token',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -248,7 +259,8 @@ export class AuthService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -258,7 +270,8 @@ export class AuthService {
       if (!user) {
         return {
           success: false,
-          error: MESSAGES.USER_NOT_FOUND
+          error: MESSAGES.USER_NOT_FOUND,
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -266,7 +279,8 @@ export class AuthService {
       if (user.is_locked) {
         return {
           success: false,
-          error: MESSAGES.USER_LOCKED
+          error: MESSAGES.USER_LOCKED,
+          statusCode: HTTP_STATUS.FORBIDDEN
         };
       }
 
@@ -287,7 +301,8 @@ export class AuthService {
       if (result.matchedCount === 0) {
         return {
           success: false,
-          error: 'Failed to update password'
+          error: 'Failed to update password',
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
         };
       }
 
@@ -302,7 +317,8 @@ export class AuthService {
       console.error('Change password error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to change password'
+        error: error instanceof Error ? error.message : 'Failed to change password',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -371,7 +387,8 @@ export class AuthService {
       console.error('Forgot password error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to process password reset request'
+        error: error instanceof Error ? error.message : 'Failed to process password reset request',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -383,7 +400,8 @@ export class AuthService {
       if (!passwordValidation.isValid) {
         return {
           success: false,
-          error: passwordValidation.message || MESSAGES.WEAK_PASSWORD
+          error: passwordValidation.message || MESSAGES.WEAK_PASSWORD,
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -395,7 +413,8 @@ export class AuthService {
       if (!user) {
         return {
           success: false,
-          error: MESSAGES.RESET_TOKEN_INVALID
+          error: MESSAGES.RESET_TOKEN_INVALID,
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -415,7 +434,8 @@ export class AuthService {
 
         return {
           success: false,
-          error: MESSAGES.RESET_TOKEN_EXPIRED
+          error: MESSAGES.RESET_TOKEN_EXPIRED,
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -423,7 +443,8 @@ export class AuthService {
       if (user.is_locked) {
         return {
           success: false,
-          error: MESSAGES.USER_LOCKED
+          error: MESSAGES.USER_LOCKED,
+          statusCode: HTTP_STATUS.FORBIDDEN
         };
       }
 
@@ -448,7 +469,8 @@ export class AuthService {
       if (result.matchedCount === 0) {
         return {
           success: false,
-          error: 'Failed to update password'
+          error: 'Failed to update password',
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
         };
       }
 
@@ -463,7 +485,8 @@ export class AuthService {
       console.error('Reset password error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to reset password'
+        error: error instanceof Error ? error.message : 'Failed to reset password',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

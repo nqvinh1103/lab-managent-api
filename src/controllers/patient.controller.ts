@@ -4,6 +4,7 @@ import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { PatientService } from '../services/patient.service';
 import { logEvent } from '../utils/eventLog.helper';
+import { handleCreateResult, handleGetResult, handleUpdateResult, sendSuccessResponse, sendErrorResponse } from '../utils/response.helper';
 
 let patientService: PatientService | null = null;
 
@@ -26,24 +27,13 @@ export const createPatient = async (req: Request, res: Response): Promise<void> 
     const result = await getPatientService().create(patientData);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || MESSAGES.DB_SAVE_ERROR,
-        error: result.error
-      });
+      handleCreateResult(res, result);
       return;
     }
 
     // Return patient data with temporary password
     // TODO: Send email with credentials instead of returning in response
     const { temporaryPassword, emailSent, emailError, ...patientInfo } = result.data!;
-
-    let message = 'Patient created successfully';
-    if (!emailSent) {
-      message += 'Login credentials will be sent via email';
-    } else {
-      message += 'Warning: Failed to send credentials email';
-    }
 
     // Log event
     await logEvent(
@@ -55,21 +45,20 @@ export const createPatient = async (req: Request, res: Response): Promise<void> 
       { patient_id: patientInfo.email, full_name: patientInfo.full_name }
     );
 
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      message: 'Patient created successfully',
-      data: patientInfo,
+    sendSuccessResponse(res, HTTP_STATUS.CREATED, 'Patient created successfully', {
+      ...patientInfo,
       emailStatus: {
         sent: emailSent,
         ...(emailError && { error: emailError })
       }
     });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to create patient'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to create patient'
+    );
   }
 };
 
@@ -80,25 +69,18 @@ export const getPatient = async (req: Request, res: Response): Promise<void> => 
     const result = await getPatientService().getById(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.NOT_FOUND,
-        error: result.error
-      });
+      handleGetResult(res, result);
       return;
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get patient'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get patient'
+    );
   }
 };
 
@@ -108,36 +90,27 @@ export const getMyProfile = async (req: Request, res: Response): Promise<void> =
     const userId = req.user?.id;
     
     if (!userId) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
     const result = await getPatientService().getByUserId(userId);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.NOT_FOUND,
-        error: result.error || 'Patient profile not found'
+      handleGetResult(res, result, {
+        notFoundMessage: result.error || 'Patient profile not found'
       });
       return;
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get profile'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get profile'
+    );
   }
 };
 
@@ -147,11 +120,7 @@ export const updatePatient = async (req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     
     if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
@@ -163,11 +132,7 @@ export const updatePatient = async (req: Request, res: Response): Promise<void> 
     const result = await getPatientService().update(id, updates);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || MESSAGES.DB_UPDATE_ERROR,
-        error: result.error
-      });
+      handleUpdateResult(res, result);
       return;
     }
 
@@ -182,17 +147,14 @@ export const updatePatient = async (req: Request, res: Response): Promise<void> 
       { changed_fields: changedFields, email: result.data!.email }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.UPDATED,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to update patient'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to update patient'
+    );
   }
 };
 
@@ -202,11 +164,7 @@ export const deletePatient = async (req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     
     if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
@@ -219,11 +177,12 @@ export const deletePatient = async (req: Request, res: Response): Promise<void> 
     const result = await getPatientService().delete(id, deletedBy);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || MESSAGES.DB_DELETE_ERROR,
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        result.error || MESSAGES.DB_DELETE_ERROR,
+        result.error
+      );
       return;
     }
 
@@ -237,16 +196,14 @@ export const deletePatient = async (req: Request, res: Response): Promise<void> 
       { email: patientInfo?.email, full_name: patientInfo?.full_name }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Patient deleted successfully'
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'Patient deleted successfully');
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to delete patient'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to delete patient'
+    );
   }
 };
 
@@ -264,31 +221,34 @@ export const listPatients = async (req: Request, res: Response): Promise<void> =
     });
 
     if (!result.success) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: result.error || MESSAGES.DB_QUERY_ERROR,
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        result.error || MESSAGES.DB_QUERY_ERROR,
+        result.error
+      );
       return;
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data?.patients || [],
-      pagination: {
+    sendSuccessResponse(
+      res,
+      HTTP_STATUS.OK,
+      MESSAGES.SUCCESS,
+      result.data?.patients || [],
+      {
         page: result.data?.page || page,
         limit: result.data?.limit || limit,
         total: result.data?.total || 0,
         totalPages: Math.ceil((result.data?.total || 0) / (result.data?.limit || limit))
       }
-    });
+    );
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to list patients'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to list patients'
+    );
   }
 };
 

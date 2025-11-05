@@ -1,5 +1,6 @@
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { ConfigurationDocument, CreateConfigurationInput, UpdateConfigurationInput } from '../models/Configuration';
 import { createPaginationOptions, createSortOptions, OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
@@ -20,7 +21,8 @@ export class ConfigurationService {
       if (existingConfig) {
         return {
           success: false,
-          error: 'Configuration with this config_key already exists'
+          error: 'Configuration with this config_key already exists',
+          statusCode: HTTP_STATUS.CONFLICT
         };
       }
 
@@ -42,12 +44,14 @@ export class ConfigurationService {
 
       return {
         success: false,
-        error: 'Failed to create configuration'
+        error: 'Failed to create configuration',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -59,7 +63,8 @@ export class ConfigurationService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid configuration ID'
+          error: 'Invalid configuration ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -68,7 +73,8 @@ export class ConfigurationService {
       if (!config) {
         return {
           success: false,
-          error: 'Configuration not found'
+          error: 'Configuration not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -127,7 +133,8 @@ export class ConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -156,7 +163,8 @@ export class ConfigurationService {
         if (existingConfig) {
           return {
             success: false,
-            error: 'Configuration with this config_key already exists'
+            error: 'Configuration with this config_key already exists',
+            statusCode: HTTP_STATUS.CONFLICT
           };
         }
       }
@@ -175,7 +183,8 @@ export class ConfigurationService {
       if (!result) {
         return {
           success: false,
-          error: 'Configuration not found'
+          error: 'Configuration not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -186,7 +195,8 @@ export class ConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -198,7 +208,8 @@ export class ConfigurationService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid configuration ID'
+          error: 'Invalid configuration ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -207,7 +218,8 @@ export class ConfigurationService {
       if (!config) {
         return {
           success: false,
-          error: 'Configuration not found'
+          error: 'Configuration not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -220,7 +232,8 @@ export class ConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -236,7 +249,8 @@ export class ConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

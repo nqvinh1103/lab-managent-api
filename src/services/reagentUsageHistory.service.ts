@@ -118,6 +118,7 @@ export const deleteReagentUsageHistory = async (id: string): Promise<boolean> =>
 };
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import {
   CreateReagentUsageHistoryInput,
@@ -149,12 +150,14 @@ export class ReagentUsageHistoryService {
 
       return {
         success: false,
-        error: 'Failed to create reagent usage history'
+        error: 'Failed to create reagent usage history',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -165,7 +168,8 @@ export class ReagentUsageHistoryService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid ID'
+          error: 'Invalid ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -174,7 +178,8 @@ export class ReagentUsageHistoryService {
       if (!doc) {
         return {
           success: false,
-          error: 'Reagent usage history not found'
+          error: 'Reagent usage history not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -185,7 +190,8 @@ export class ReagentUsageHistoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -264,7 +270,8 @@ export class ReagentUsageHistoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -279,7 +286,8 @@ export class ReagentUsageHistoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
