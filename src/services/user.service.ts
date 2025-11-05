@@ -373,9 +373,10 @@ export class UserService {
     try {
       const users = await this.collection
         .find({})
+        .sort({ created_at: -1 })
         .skip(skip)
         .limit(limit)
-        .toArray();
+        .toArray(); 
 
       return {
         success: true,
