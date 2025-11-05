@@ -5,6 +5,7 @@ import { MESSAGES } from '../constants/messages';
 import { PrivilegeDocument } from '../models/Privilege';
 import { RoleService } from '../services/role.service';
 import { logEvent } from '../utils/eventLog.helper';
+import { handleCreateResult, handleGetResult, handleUpdateResult, handleDeleteResult, sendSuccessResponse, sendErrorResponse } from '../utils/response.helper';
 
 let roleService: RoleService | null = null;
 
@@ -19,22 +20,14 @@ const getRoleService = () => {
 export const createRole = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
     const result = await getRoleService().create(req.body, req.user.id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: MESSAGES.DB_SAVE_ERROR,
-        error: result.error
-      });
+      handleCreateResult(res, result);
       return;
     }
 
@@ -48,17 +41,14 @@ export const createRole = async (req: Request, res: Response): Promise<void> => 
       { role_name: result.data!.role_name, role_code: result.data!.role_code }
     );
 
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      message: MESSAGES.CREATED,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.CREATED, MESSAGES.CREATED, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to create role'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to create role'
+    );
   }
 };
 
@@ -72,33 +62,36 @@ export const getAllRoles = async (req: Request, res: Response): Promise<void> =>
     const countResult = await getRoleService().count();
 
     if (!result.success) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: MESSAGES.DB_QUERY_ERROR,
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.DB_QUERY_ERROR,
+        result.error
+      );
       return;
     }
 
     const total = countResult.data || 0;
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data,
-      pagination: {
+    sendSuccessResponse(
+      res,
+      HTTP_STATUS.OK,
+      MESSAGES.SUCCESS,
+      result.data,
+      {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit)
       }
-    });
+    );
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get roles'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get roles'
+    );
   }
 };
 
@@ -109,25 +102,18 @@ export const getRoleById = async (req: Request, res: Response): Promise<void> =>
     const result = await getRoleService().findById(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.NOT_FOUND,
-        error: result.error
-      });
+      handleGetResult(res, result);
       return;
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get role'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get role'
+    );
   }
 };
 
@@ -138,10 +124,8 @@ export const getRoleWithPrivileges = async (req: Request, res: Response): Promis
     const roleResult = await getRoleService().findById(id);
 
     if (!roleResult.success || !roleResult.data) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.NOT_FOUND,
-        error: 'Role not found'
+      handleGetResult(res, roleResult, {
+        notFoundMessage: 'Role not found'
       });
       return;
     }
@@ -154,20 +138,17 @@ export const getRoleWithPrivileges = async (req: Request, res: Response): Promis
       .find({ _id: { $in: role.privilege_ids } })
       .toArray();
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: {
-        ...role,
-        privileges
-      }
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, {
+      ...role,
+      privileges
     });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get role with privileges'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get role with privileges'
+    );
   }
 };
 
@@ -175,11 +156,7 @@ export const getRoleWithPrivileges = async (req: Request, res: Response): Promis
 export const updateRole = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
@@ -187,11 +164,7 @@ export const updateRole = async (req: Request, res: Response): Promise<void> => 
     const result = await getRoleService().findByIdAndUpdate(id, req.body, req.user.id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.DB_UPDATE_ERROR,
-        error: result.error
-      });
+      handleUpdateResult(res, result);
       return;
     }
 
@@ -206,17 +179,14 @@ export const updateRole = async (req: Request, res: Response): Promise<void> => 
       { changed_fields: changedFields, role_name: result.data!.role_name }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.UPDATED,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to update role'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to update role'
+    );
   }
 };
 
@@ -232,11 +202,7 @@ export const deleteRole = async (req: Request, res: Response): Promise<void> => 
     const result = await getRoleService().deleteById(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.DB_DELETE_ERROR,
-        error: result.error
-      });
+      handleDeleteResult(res, result);
       return;
     }
 
@@ -250,17 +216,14 @@ export const deleteRole = async (req: Request, res: Response): Promise<void> => 
       { role_name: roleInfo?.role_name, role_code: roleInfo?.role_code }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.DELETED,
-      data: { deletedCount: result.deletedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED, { deletedCount: result.deletedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to delete role'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to delete role'
+    );
   }
 };
 
@@ -273,11 +236,12 @@ export const assignPrivilege = async (req: Request, res: Response): Promise<void
     const result = await getRoleService().assignPrivilege(id, privilegeId);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Failed to assign privilege',
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        'Failed to assign privilege',
+        result.error
+      );
       return;
     }
 
@@ -292,17 +256,14 @@ export const assignPrivilege = async (req: Request, res: Response): Promise<void
       { privilegeId, role_name: roleResult.data?.role_name }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Privilege assigned successfully',
-      data: { modifiedCount: result.modifiedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'Privilege assigned successfully', { modifiedCount: result.modifiedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to assign privilege'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to assign privilege'
+    );
   }
 };
 
@@ -314,11 +275,12 @@ export const removePrivilege = async (req: Request, res: Response): Promise<void
     const result = await getRoleService().removePrivilege(id, privilegeId);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Failed to remove privilege',
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        'Failed to remove privilege',
+        result.error
+      );
       return;
     }
 
@@ -333,16 +295,13 @@ export const removePrivilege = async (req: Request, res: Response): Promise<void
       { privilegeId, role_name: roleResult.data?.role_name }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Privilege removed successfully',
-      data: { modifiedCount: result.modifiedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'Privilege removed successfully', { modifiedCount: result.modifiedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to remove privilege'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to remove privilege'
+    );
   }
 };

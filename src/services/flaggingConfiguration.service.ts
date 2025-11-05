@@ -1,5 +1,6 @@
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { 
   FlaggingConfigurationDocument, 
@@ -23,7 +24,8 @@ export class FlaggingConfigurationService {
       if (!parameterObjectId) {
         return {
           success: false,
-          error: 'Invalid parameter_id'
+          error: 'Invalid parameter_id',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -31,7 +33,8 @@ export class FlaggingConfigurationService {
       if (!parameter) {
         return {
           success: false,
-          error: 'Parameter not found'
+          error: 'Parameter not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -40,7 +43,8 @@ export class FlaggingConfigurationService {
         if (configData.reference_range_min >= configData.reference_range_max) {
           return {
             success: false,
-            error: 'reference_range_min must be less than reference_range_max'
+            error: 'reference_range_min must be less than reference_range_max',
+            statusCode: HTTP_STATUS.BAD_REQUEST
           };
         }
       }
@@ -64,12 +68,14 @@ export class FlaggingConfigurationService {
 
       return {
         success: false,
-        error: 'Failed to create flagging configuration'
+        error: 'Failed to create flagging configuration',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -81,7 +87,8 @@ export class FlaggingConfigurationService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid flagging configuration ID'
+          error: 'Invalid flagging configuration ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -90,7 +97,8 @@ export class FlaggingConfigurationService {
       if (!config) {
         return {
           success: false,
-          error: 'Flagging configuration not found'
+          error: 'Flagging configuration not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -101,7 +109,8 @@ export class FlaggingConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -160,7 +169,8 @@ export class FlaggingConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -176,7 +186,8 @@ export class FlaggingConfigurationService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid flagging configuration ID'
+          error: 'Invalid flagging configuration ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -186,7 +197,8 @@ export class FlaggingConfigurationService {
         if (!parameterObjectId) {
           return {
             success: false,
-            error: 'Invalid parameter_id'
+            error: 'Invalid parameter_id',
+            statusCode: HTTP_STATUS.BAD_REQUEST
           };
         }
 
@@ -194,7 +206,8 @@ export class FlaggingConfigurationService {
         if (!parameter) {
           return {
             success: false,
-            error: 'Parameter not found'
+            error: 'Parameter not found',
+            statusCode: HTTP_STATUS.NOT_FOUND
           };
         }
         updateData.parameter_id = parameterObjectId;
@@ -205,7 +218,8 @@ export class FlaggingConfigurationService {
         if (updateData.reference_range_min >= updateData.reference_range_max) {
           return {
             success: false,
-            error: 'reference_range_min must be less than reference_range_max'
+            error: 'reference_range_min must be less than reference_range_max',
+            statusCode: HTTP_STATUS.BAD_REQUEST
           };
         }
       } else if (updateData.reference_range_min !== undefined || updateData.reference_range_max !== undefined) {
@@ -217,7 +231,8 @@ export class FlaggingConfigurationService {
           if (min !== undefined && max !== undefined && min >= max) {
             return {
               success: false,
-              error: 'reference_range_min must be less than reference_range_max'
+              error: 'reference_range_min must be less than reference_range_max',
+              statusCode: HTTP_STATUS.BAD_REQUEST
             };
           }
         }
@@ -237,7 +252,8 @@ export class FlaggingConfigurationService {
       if (!result) {
         return {
           success: false,
-          error: 'Flagging configuration not found'
+          error: 'Flagging configuration not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -248,7 +264,8 @@ export class FlaggingConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -260,7 +277,8 @@ export class FlaggingConfigurationService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid flagging configuration ID'
+          error: 'Invalid flagging configuration ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -269,7 +287,8 @@ export class FlaggingConfigurationService {
       if (!config) {
         return {
           success: false,
-          error: 'Flagging configuration not found'
+          error: 'Flagging configuration not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -282,7 +301,8 @@ export class FlaggingConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -409,7 +429,8 @@ export class FlaggingConfigurationService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

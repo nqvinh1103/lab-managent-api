@@ -1,6 +1,7 @@
 import * as ExcelJS from "exceljs";
 import { ObjectId } from "mongodb";
 import { getCollection } from "../config/database";
+import { HTTP_STATUS } from "../constants/httpStatus";
 import {
   CreateTestOrderInput,
   ITestOrder,
@@ -33,7 +34,7 @@ export const createTestOrder = async (
     return {
       success: false,
       error: `Patient with email not found`,
-      statusCode: 400
+      statusCode: HTTP_STATUS.BAD_REQUEST
     };
   }
 
@@ -47,7 +48,7 @@ export const createTestOrder = async (
     return {
       success: false,
       error: `Patient already has a pending test order. Please complete the existing order before creating a new one.`,
-      statusCode: 400
+      statusCode: HTTP_STATUS.BAD_REQUEST
     };
   }
 
@@ -67,7 +68,7 @@ export const createTestOrder = async (
       return {
         success: false,
         error: `Instrument with name not found`,
-        statusCode: 400
+        statusCode: HTTP_STATUS.BAD_REQUEST
       };
     }
     console.log('Resolved instrument by name:', { instrumentId: instrument._id });
@@ -106,7 +107,7 @@ export const createTestOrder = async (
       return {
         success: false,
         error: "Failed to create test order",
-        statusCode: 500
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
 
@@ -117,7 +118,7 @@ export const createTestOrder = async (
       return {
         success: false,
         error: "Failed to create test order: document not found after insert",
-        statusCode: 500
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
 
@@ -131,7 +132,7 @@ export const createTestOrder = async (
     return {
       success: false,
       error: "Failed to create test order",
-      statusCode: 500
+      statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
     };
   }
 };

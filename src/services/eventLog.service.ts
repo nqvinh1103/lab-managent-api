@@ -1,5 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { CreateEventLogInput, EventLogDocument } from '../models/EventLog';
 
 export class EventLogService {
@@ -23,7 +24,8 @@ export class EventLogService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create event log'
+        error: error instanceof Error ? error.message : 'Failed to create event log',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -69,7 +71,8 @@ export class EventLogService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch event logs'
+        error: error instanceof Error ? error.message : 'Failed to fetch event logs',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -80,14 +83,15 @@ export class EventLogService {
       const data = await collection.findOne({ _id: new ObjectId(id) });
       
       if (!data) {
-        return { success: false, error: 'Event log not found' };
+        return { success: false, error: 'Event log not found', statusCode: HTTP_STATUS.NOT_FOUND };
       }
       
       return { success: true, data };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch event log'
+        error: error instanceof Error ? error.message : 'Failed to fetch event log',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -100,7 +104,8 @@ export class EventLogService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to count event logs'
+        error: error instanceof Error ? error.message : 'Failed to count event logs',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -176,7 +181,8 @@ export class EventLogService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch event logs with user info'
+        error: error instanceof Error ? error.message : 'Failed to fetch event logs with user info',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

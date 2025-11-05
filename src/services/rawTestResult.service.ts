@@ -1,8 +1,9 @@
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
+import { MESSAGES } from '../constants/messages';
 import { CreateRawTestResultInput, RawTestResultDocument } from '../models/RawTestResult';
 import { QueryResult, toObjectId } from '../utils/database.helper';
-import { MESSAGES } from '../constants/messages';
 
 const COLLECTION = 'raw_test_results';
 
@@ -23,9 +24,17 @@ export class RawTestResultService {
         const created = await collection.findOne({ _id: result.insertedId });
         return { success: true, data: created! };
       }
-      return { success: false, error: 'Failed to create raw test result' };
+      return { 
+        success: false, 
+        error: 'Failed to create raw test result',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
     }
   }
 
@@ -41,7 +50,11 @@ export class RawTestResultService {
       const results = await collection.find(query).sort({ created_at: -1 }).toArray();
       return { success: true, data: results as RawTestResultDocument[] };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
     }
   }
 
@@ -50,16 +63,28 @@ export class RawTestResultService {
       const collection = getCollection<RawTestResultDocument>(COLLECTION);
       const objectId = toObjectId(id);
       if (!objectId) {
-        return { success: false, error: 'Invalid raw test result ID' };
+        return { 
+          success: false, 
+          error: 'Invalid raw test result ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
+        };
       }
 
       const result = await collection.findOne({ _id: objectId });
       if (!result) {
-        return { success: false, error: 'Raw test result not found' };
+        return { 
+          success: false, 
+          error: 'Raw test result not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
+        };
       }
       return { success: true, data: result as RawTestResultDocument };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
     }
   }
 
@@ -68,23 +93,39 @@ export class RawTestResultService {
       const collection = getCollection<RawTestResultDocument>(COLLECTION);
       const objectId = toObjectId(id);
       if (!objectId) {
-        return { success: false, error: 'Invalid raw test result ID' };
+        return { 
+          success: false, 
+          error: 'Invalid raw test result ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
+        };
       }
 
       // Check if can_delete is true
       const doc = await collection.findOne({ _id: objectId });
       if (!doc) {
-        return { success: false, error: 'Raw test result not found' };
+        return { 
+          success: false, 
+          error: 'Raw test result not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
+        };
       }
 
       if (!doc.can_delete) {
-        return { success: false, error: 'Cannot delete: result must be synced/backed up first' };
+        return { 
+          success: false, 
+          error: 'Cannot delete: result must be synced/backed up first',
+          statusCode: HTTP_STATUS.BAD_REQUEST
+        };
       }
 
       const result = await collection.deleteOne({ _id: objectId });
       return { success: true, data: result.deletedCount > 0 };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
     }
   }
 
@@ -102,7 +143,11 @@ export class RawTestResultService {
 
       return { success: true, data: result.deletedCount };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
     }
   }
 }

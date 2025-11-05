@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UpdateUserInput, UserDocument } from '../models/User';
 import { UserRoleDocument } from '../models/UserRole';
@@ -83,7 +84,7 @@ export class UserService {
         return {
           success: false,
           error: errorMessage,
-          statusCode: 409 // Conflict status code
+          statusCode: HTTP_STATUS.CONFLICT
         };
       }
 
@@ -101,7 +102,8 @@ export class UserService {
           if (!objectId) {
             return {
               success: false,
-              error: `Invalid role ID: ${roleId}`
+              error: `Invalid role ID: ${roleId}`,
+              statusCode: HTTP_STATUS.BAD_REQUEST
             };
           }
           
@@ -110,7 +112,8 @@ export class UserService {
           if (!roleExists) {
             return {
               success: false,
-              error: `Role not found: ${roleId}`
+              error: `Role not found: ${roleId}`,
+              statusCode: HTTP_STATUS.NOT_FOUND
             };
           }
           
@@ -169,12 +172,14 @@ export class UserService {
 
       return {
         success: false,
-        error: 'Failed to create user'
+        error: 'Failed to create user',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -185,7 +190,8 @@ export class UserService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -194,7 +200,8 @@ export class UserService {
       if (!user) {
         return {
           success: false,
-          error: 'User not found'
+          error: 'User not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -205,7 +212,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -217,7 +225,8 @@ export class UserService {
       if (!user) {
         return {
           success: false,
-          error: 'User not found'
+          error: 'User not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -228,7 +237,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -240,7 +250,7 @@ export class UserService {
         return {
           success: false,
           error: 'Invalid user ID',
-          statusCode: 400
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -257,11 +267,11 @@ export class UserService {
           if (field === 'phone_number') errorMessage = 'Phone number already exists';
           if (field === 'identity_number') errorMessage = 'Identity number already exists';
           
-          return {
-            success: false,
-            error: errorMessage,
-            statusCode: 409
-          };
+        return {
+          success: false,
+          error: errorMessage,
+          statusCode: HTTP_STATUS.CONFLICT
+        };
         }
       }
 
@@ -329,7 +339,8 @@ export class UserService {
       if (!result) {
         return {
           success: false,
-          error: 'User not found'
+          error: 'User not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -340,7 +351,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -351,7 +363,8 @@ export class UserService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -364,7 +377,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -385,7 +399,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -400,7 +415,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -421,7 +437,8 @@ export class UserService {
       if (!userObjectId || !roleObjectId) {
         return {
           success: false,
-          error: 'Invalid user ID or role ID'
+          error: 'Invalid user ID or role ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -430,7 +447,8 @@ export class UserService {
       if (!user) {
         return {
           success: false,
-          error: 'User not found'
+          error: 'User not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -473,7 +491,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -486,7 +505,8 @@ export class UserService {
       if (!userObjectId || !roleObjectId) {
         return {
           success: false,
-          error: 'Invalid user ID or role ID'
+          error: 'Invalid user ID or role ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -521,7 +541,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -532,7 +553,8 @@ export class UserService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -553,7 +575,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -564,7 +587,8 @@ export class UserService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -585,7 +609,8 @@ export class UserService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
