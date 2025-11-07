@@ -342,6 +342,48 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
             preserveNullAndEmptyArrays: true
           }
         },
+        // Unwind comments to populate user info for each comment
+        { $unwind: { path: "$comments", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "users",
+            localField: "comments.created_by",
+            foreignField: "_id",
+            as: "comment_user"
+          }
+        },
+        {
+          $unwind: {
+            path: "$comment_user",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $addFields: {
+            "comments.created_by_name": "$comment_user.full_name"
+          }
+        },
+        {
+          $group: {
+            _id: "$_id",
+            order_number: { $first: "$order_number" },
+            patient_id: { $first: "$patient_id" },
+            instrument_id: { $first: "$instrument_id" },
+            barcode: { $first: "$barcode" },
+            status: { $first: "$status" },
+            test_results: { $first: "$test_results" },
+            comments: { $push: "$comments" },
+            run_by: { $first: "$run_by" },
+            run_at: { $first: "$run_at" },
+            created_at: { $first: "$created_at" },
+            created_by: { $first: "$created_by" },
+            updated_at: { $first: "$updated_at" },
+            updated_by: { $first: "$updated_by" },
+            patient_info: { $first: "$patient_info" },
+            created_by_user: { $first: "$created_by_user" },
+            run_by_user: { $first: "$run_by_user" }
+          }
+        },
         {
           $addFields: {
             patient_email: "$patient_info.email",
@@ -350,7 +392,15 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
             patient_gender: "$patient_info.gender",
             patient_phone: "$patient_info.phone_number",
             created_by_name: "$created_by_user.full_name",
-            run_by_name: "$run_by_user.full_name"
+            run_by_name: "$run_by_user.full_name",
+            // Filter out null comments (from unwind when comments array is empty)
+            comments: {
+              $filter: {
+                input: "$comments",
+                as: "comment",
+                cond: { $ne: ["$$comment", null] }
+              }
+            }
           }
         },
         {
@@ -540,13 +590,28 @@ export const deleteComment = async (
   try {
     const _id = new ObjectId(orderId);
 
-    // Soft delete: set deleted_at field on specific comment
-    const updateField = `comments.${commentIndex}`;
+    // Get the current order to access comments array
+    const order = await collection.findOne({ _id });
+    if (!order) {
+      return null;
+    }
+
+    // Validate comment index
+    if (!order.comments || commentIndex < 0 || commentIndex >= order.comments.length) {
+      return null;
+    }
+
+    // Remove comment from array by index
+    // Create a new array without the comment at the specified index
+    const updatedComments = [...order.comments];
+    updatedComments.splice(commentIndex, 1);
+
+    // Update the order with the new comments array
     await collection.updateOne(
       { _id },
       { 
-        $set: { 
-          [`${updateField}.deleted_at`]: now,
+        $set: {
+          comments: updatedComments,
           updated_at: now,
           updated_by: deletedBy
         }
@@ -556,6 +621,7 @@ export const deleteComment = async (
     const updated = await collection.findOne({ _id });
     return updated as TestOrderDocument | null;
   } catch (err) {
+    console.error('Error deleting comment:', err);
     return null;
   }
 };
