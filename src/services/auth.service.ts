@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
+import { PatientDocument } from '../models/Patient';
 import { PrivilegeDocument } from '../models/Privilege';
 import { RoleDocument } from '../models/Role';
 import { UserDocument } from '../models/User';
@@ -28,10 +29,36 @@ export interface LoginResult {
   };
 }
 
+export interface MeProfileResult {
+  user: {
+    id: string;
+    email: string;
+    full_name: string;
+    phone_number: string;
+    identity_number: string;
+    gender: 'male' | 'female';
+    address?: string;
+    date_of_birth: Date;
+    roles: string[];
+    privileges: string[];
+  };
+  patient?: {
+    _id: string;
+    full_name: string;
+    identity_number?: string;
+    date_of_birth: Date;
+    gender: 'male' | 'female';
+    address?: string;
+    phone_number?: string;
+    email?: string;
+  };
+}
+
 export class AuthService {
   private getUserCollection = () => getCollection<UserDocument>('users');
   private getRoleCollection = () => getCollection<RoleDocument>('roles');
   private getPrivilegeCollection = () => getCollection<PrivilegeDocument>('privileges');
+  private getPatientCollection = () => getCollection<PatientDocument>('patients');
 
   async login(email: string, password: string): Promise<QueryResult<LoginResult>> {
     try {
@@ -486,6 +513,120 @@ export class AuthService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to reset password',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
+    }
+  }
+
+  /**
+   * Get current user's profile (me endpoint)
+   * Returns user info with roles/privileges, and patient info if user is a patient
+   */
+  async getMe(userId: string): Promise<QueryResult<MeProfileResult>> {
+    try {
+      const objectId = toObjectId(userId);
+      
+      if (!objectId) {
+        return {
+          success: false,
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
+        };
+      }
+
+      // Get user
+      const user = await this.getUserCollection().findOne({ _id: objectId });
+
+      if (!user) {
+        return {
+          success: false,
+          error: MESSAGES.USER_NOT_FOUND,
+          statusCode: HTTP_STATUS.NOT_FOUND
+        };
+      }
+
+      // Check if account is locked
+      if (user.is_locked) {
+        return {
+          success: false,
+          error: MESSAGES.USER_LOCKED,
+          statusCode: HTTP_STATUS.FORBIDDEN
+        };
+      }
+
+      // Get user's roles
+      const roleIds = user.role_ids || [];
+      const roles = await this.getRoleCollection()
+        .find({ _id: { $in: roleIds } })
+        .toArray();
+
+      const roleCodes = roles.map(role => role.role_code);
+
+      // Get privileges from roles
+      const privilegeIds = new Set<ObjectId>();
+      roles.forEach(role => {
+        if (role.privilege_ids && role.privilege_ids.length > 0) {
+          role.privilege_ids.forEach(pid => privilegeIds.add(pid));
+        }
+      });
+
+      const privilegeDocuments = privilegeIds.size > 0
+        ? await this.getPrivilegeCollection()
+            .find({ _id: { $in: Array.from(privilegeIds) } })
+            .toArray()
+        : [];
+
+      const privilegeCodes = privilegeDocuments.map(p => p.privilege_code);
+
+      // Check if user is a patient (has patient record)
+      const patient = await this.getPatientCollection().findOne({
+        user_id: objectId,
+        deleted_at: { $exists: false }
+      });
+
+      // Build user profile
+      const userProfile = {
+        id: user._id.toString(),
+        email: user.email,
+        full_name: user.full_name,
+        phone_number: user.phone_number,
+        identity_number: user.identity_number,
+        gender: user.gender,
+        address: user.address,
+        date_of_birth: user.date_of_birth,
+        roles: roleCodes,
+        privileges: privilegeCodes
+      };
+
+      // Build result
+      const result: MeProfileResult = {
+        user: userProfile
+      };
+
+      // Include patient info if user is a patient
+      if (patient) {
+        result.patient = {
+          _id: patient._id.toString(),
+          full_name: patient.full_name,
+          identity_number: patient.identity_number,
+          date_of_birth: patient.date_of_birth,
+          gender: patient.gender,
+          address: patient.address,
+          phone_number: patient.phone_number,
+          email: patient.email
+        };
+      }
+
+      return {
+        success: true,
+        data: result
+      };
+
+    } catch (error) {
+      console.error('Get me profile error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get profile',
         statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
