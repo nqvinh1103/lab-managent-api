@@ -188,6 +188,7 @@ export const getAllTestOrders = async (): Promise<any[]> => {
         $addFields: {
           patient_email: "$patient_info.email",
           patient_name: "$patient_info.full_name",
+          patient_dob: "$patient_info.date_of_birth",
           patient_gender: "$patient_info.gender",
           patient_phone: "$patient_info.phone_number",
           created_by_name: "$created_by_user.full_name",
@@ -272,6 +273,7 @@ export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any
         $addFields: {
           patient_email: "$patient_info.email",
           patient_name: "$patient_info.full_name",
+          patient_dob: "$patient_info.date_of_birth",
           patient_gender: "$patient_info.gender",
           patient_phone: "$patient_info.phone_number",
           created_by_name: "$created_by_user.full_name",
@@ -344,6 +346,7 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
           $addFields: {
             patient_email: "$patient_info.email",
             patient_name: "$patient_info.full_name",
+            patient_dob: "$patient_info.date_of_birth",
             patient_gender: "$patient_info.gender",
             patient_phone: "$patient_info.phone_number",
             created_by_name: "$created_by_user.full_name",
@@ -369,7 +372,8 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
 
 export const updateTestOrder = async (
   id: string,
-  data: UpdateTestOrderWithPatientInput
+  data: UpdateTestOrderWithPatientInput,
+  updatedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   const patientCollection = getCollection<any>(PATIENT_COLLECTION);
@@ -387,7 +391,7 @@ export const updateTestOrder = async (
     // Separate patient fields from test order fields
     const patientFields = ['full_name', 'date_of_birth', 'gender', 'phone_number', 'address'];
     const patientUpdateData: any = {};
-    const testOrderUpdateData: any = { updated_at: now };
+    const testOrderUpdateData: any = { updated_at: now, updated_by: updatedBy };
 
     Object.keys(data).forEach((key) => {
       if (patientFields.includes(key)) {
@@ -416,7 +420,7 @@ export const updateTestOrder = async (
             $set: { 
               ...patientUpdateData, 
               updated_at: now,
-              updated_by: testOrder.updated_by  // Keep the last updater for patient
+              updated_by: updatedBy
             } 
           },
           { session }
