@@ -12,7 +12,9 @@
     "prettier": "prettier --check .",
     "prettier:fix": "prettier --write .",
     "seed:srs": "tsx src/seeds/srs-privileges.seed.ts",
-    "seed:reagents": "tsx src/scripts/seedReagents.ts"
+    "seed:reagents": "tsx src/scripts/seedReagents.ts",
+    "migrate:remove-instrument-status": "tsx src/scripts/migrateRemoveInstrumentStatusFields.ts",
+    "migrate:remove-instrument-status:dry-run": "tsx src/scripts/migrateRemoveInstrumentStatusFields.ts --dry-run"
   },
   "keywords": [],
   "author": "",

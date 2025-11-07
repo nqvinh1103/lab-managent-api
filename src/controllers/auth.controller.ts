@@ -210,3 +210,40 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+export const getMe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Get authenticated user from middleware
+    if (!req.user?.id) {
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    const userId = req.user.id;
+
+    // Call auth service
+    const result = await authService.getMe(userId);
+
+    if (!result.success) {
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        result.error || 'Failed to get profile',
+        result.error
+      );
+      return;
+    }
+
+    // Return success response
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result.data);
+
+  } catch (error) {
+    console.error('Get me profile controller error:', error);
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get profile'
+    );
+  }
+};
+
