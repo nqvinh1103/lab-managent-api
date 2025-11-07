@@ -198,6 +198,40 @@
  *                 created_by: "507f1f77bcf86cd799439011"
  *                 updated_at: "2024-01-01T00:00:00.000Z"
  *                 updated_by: "507f1f77bcf86cd799439011"
+ *                 reagents:
+ *                   - _id: "507f1f77bcf86cd799439020"
+ *                     instrument_id: "507f1f77bcf86cd799439011"
+ *                     reagent_inventory_id: "507f1f77bcf86cd799439021"
+ *                     reagent_id: "507f1f77bcf86cd799439022"
+ *                     reagent_name: "Diluent"
+ *                     description: "Diluent reagent for hematology analysis"
+ *                     usage_per_run_min: 10
+ *                     usage_per_run_max: 15
+ *                     usage_unit: "ml"
+ *                     reagent_lot_number: "LOT-2024-001"
+ *                     expiration_date: "2025-12-31T00:00:00.000Z"
+ *                     quantity: 1000
+ *                     quantity_remaining: 850
+ *                     installed_at: "2024-01-15T10:00:00.000Z"
+ *                     installed_by: "507f1f77bcf86cd799439011"
+ *                     status: "in_use"
+ *                     created_at: "2024-01-15T10:00:00.000Z"
+ *                     created_by: "507f1f77bcf86cd799439011"
+ *                 test_orders:
+ *                   - _id: "507f1f77bcf86cd799439030"
+ *                     order_number: "ORD-1704067200000"
+ *                     patient_id: "507f1f77bcf86cd799439031"
+ *                     instrument_id: "507f1f77bcf86cd799439011"
+ *                     barcode: "BC-ABC123XYZ"
+ *                     status: "completed"
+ *                     test_results: []
+ *                     comments: []
+ *                     run_by: "507f1f77bcf86cd799439011"
+ *                     run_at: "2024-01-20T14:30:00.000Z"
+ *                     created_at: "2024-01-20T14:00:00.000Z"
+ *                     created_by: "507f1f77bcf86cd799439011"
+ *                     updated_at: "2024-01-20T14:30:00.000Z"
+ *                     updated_by: "507f1f77bcf86cd799439011"
  *       400:
  *         description: Bad request - Invalid instrument ID
  *         content:

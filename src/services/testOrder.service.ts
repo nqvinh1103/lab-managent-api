@@ -486,16 +486,17 @@ export const processSample = async (
 
   try {
     // 1. Check if test order exists with barcode
-    let existingOrder = await collection.findOne({ barcode });
-    let order: TestOrderDocument | undefined;
-    let isNew = false;
+    const existingOrder = await collection.findOne({ barcode });
     
-    if (existingOrder) {
-      order = existingOrder as TestOrderDocument;
-      isNew = false;
-    } else {
-    // 2. Check instrument mode = 'ready'
-    const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
+    if (!existingOrder) {
+      throw new Error(`Test order with barcode "${barcode}" not found`);
+    }
+    
+    let order = existingOrder as TestOrderDocument;
+    
+    // 2. Validate instrument exists and is ready BEFORE updating order
+    const newInstrumentId = new ObjectId(instrumentId);
+    const instrument = await instrumentCollection.findOne({ _id: newInstrumentId });
     if (!instrument) {
       throw new Error('Instrument not found');
     }
@@ -504,209 +505,116 @@ export const processSample = async (
       throw new Error(`Instrument is not ready (current mode: ${instrument.mode || 'not set'})`);
     }
 
-      // 3. Check reagent levels - validate all 5 required reagent types
+    // 3. Check reagent levels - validate all 5 required reagent types BEFORE updating order
     const reagents = await reagentCollection.find({
-      instrument_id: new ObjectId(instrumentId),
+      instrument_id: newInstrumentId,
       status: 'in_use'
     }).toArray();
 
-      // Validate that all 5 required reagent types are present and have sufficient quantity
-      const validationResult = validateRequiredReagents(reagents as any[]);
-      if (!validationResult.valid) {
-        throw new Error(getReagentValidationErrorMessage(validationResult));
+    // Validate that all 5 required reagent types are present and have sufficient quantity
+    const validationResult = validateRequiredReagents(reagents as any[]);
+    if (!validationResult.valid) {
+      throw new Error(getReagentValidationErrorMessage(validationResult));
     }
 
-    // 4. Auto-create test order and RawTestResult within transaction
-    // This ensures both operations succeed or fail together
-    const orderNumber = `ORD-${Date.now()}`;
-    
-    const newOrder: ITestOrder = {
-      order_number: orderNumber,
-      patient_id: new ObjectId('000000000000000000000000'), // Placeholder, needs to be matched later
-      instrument_id: new ObjectId(instrumentId),
-      barcode,
-      status: 'pending',
-      test_results: [],
-      comments: [],
-      run_by: undefined,
-      run_at: undefined,
-      created_at: now,
-      created_by: createdBy,
-      updated_at: now,
-      updated_by: createdBy
-    };
-
-    // Generate HL7 data before transaction (needs order data structure)
-    let hl7Message: string | null = null;
-    try {
-      const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
-      if (instrument) {
-        const parameterService = new ParameterService();
-        const parametersResult = await parameterService.findAll(1, 1000);
-        
-        if (parametersResult.success && parametersResult.data && parametersResult.data.parameters.length > 0) {
-          const parameters = parametersResult.data.parameters;
-          const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-          const patient = newOrder.patient_id ? await patientCollection.findOne({ _id: newOrder.patient_id }) : null;
-          const rawTestResults = generateRawTestResults(parameters, patient);
-          
-          if (rawTestResults.length > 0) {
-            // Create temporary order document for HL7 generation
-            const tempOrder: TestOrderDocument = {
-              ...newOrder,
-              _id: new ObjectId() // Temporary ID for HL7 generation
-            } as TestOrderDocument;
-            
-            hl7Message = await generateHL7Message({
-              testOrder: tempOrder,
-              patient: patient,
-              instrument: instrument,
-              rawTestResults: rawTestResults
-            });
-          }
+    // 4. Validate and update instrument_id consistency AFTER all validations pass
+    if (order.instrument_id) {
+      // Order already has instrument_id - check consistency
+      const existingInstrumentId = order.instrument_id instanceof ObjectId 
+        ? order.instrument_id 
+        : new ObjectId(String(order.instrument_id));
+      
+      if (!existingInstrumentId.equals(newInstrumentId)) {
+        throw new Error(`Test order is already assigned to instrument ${existingInstrumentId.toString()}. Cannot process with different instrument ${newInstrumentId.toString()}`);
+      }
+    } else {
+      // Order doesn't have instrument_id - assign it now (only after all validations pass)
+      await collection.updateOne(
+        { _id: order._id },
+        { 
+          $set: { 
+            instrument_id: newInstrumentId,
+            updated_at: now,
+            updated_by: createdBy
+          } 
         }
+      );
+    }
+    
+    // Reload order from DB to ensure we have the latest data (including updated_at, updated_by)
+    const updatedOrder = await collection.findOne({ _id: order._id });
+    if (!updatedOrder) {
+      throw new Error('Failed to retrieve updated test order');
+    }
+    order = updatedOrder as TestOrderDocument;
+
+    // 5. Generate raw test results and HL7 message (3.6.1.3)
+    try {
+      // Get all active parameters
+      const parameterService = new ParameterService();
+      const parametersResult = await parameterService.findAll(1, 1000); // Get all parameters
+      
+      if (!parametersResult.success) {
+        console.error('Failed to get parameters:', parametersResult.error);
+        return { order: order, isNew: false };
+      }
+
+      if (!parametersResult.data || parametersResult.data.parameters.length === 0) {
+        console.error('No active parameters found in database');
+        return { order: order, isNew: false };
+      }
+
+      const parameters = parametersResult.data.parameters;
+      
+      // Get patient for gender-specific ranges
+      const patientCollection = getCollection<any>(PATIENT_COLLECTION);
+      const patient = order.patient_id ? await patientCollection.findOne({ _id: order.patient_id }) : null;
+
+      // Generate raw test results
+      const rawTestResults = generateRawTestResults(parameters, patient);
+
+      if (rawTestResults.length === 0) {
+        console.error('No raw test results generated');
+        return { order: order, isNew: false };
+      }
+
+      // Generate HL7 message
+      const hl7Message = await generateHL7Message({
+        testOrder: order,
+        patient: patient,
+        instrument: instrument,
+        rawTestResults: rawTestResults
+      });
+
+      // Save to RawTestResult collection
+      const rawTestResultService = new RawTestResultService();
+      const createResult = await rawTestResultService.create({
+        test_order_id: order._id,
+        barcode: barcode,
+        instrument_id: newInstrumentId,
+        hl7_message: hl7Message,
+        status: 'pending',
+        sent_at: now,
+        can_delete: false,
+        created_by: createdBy
+      });
+
+      if (!createResult.success) {
+        console.error('Failed to create raw test result:', createResult.error);
       }
     } catch (hl7Error) {
-      // Log error but don't fail - we'll create order without RawTestResult
-      console.error('Error generating HL7 message before transaction:', hl7Error);
+      // Log error but don't fail the processSample operation
+      console.error('Error generating HL7 message in processSample:', hl7Error);
     }
 
-    // Execute within transaction: insert TestOrder + insert RawTestResult atomically
-    await withTransaction(async (session) => {
-      // Insert TestOrder
-      const result = await collection.insertOne(newOrder as TestOrderDocument, { session });
-      
-      if (!result.insertedId) {
-        throw new Error('Failed to create test order');
-      }
-
-      const inserted = await collection.findOne({ _id: result.insertedId }, { session });
-      if (!inserted) {
-        throw new Error('Failed to retrieve created test order');
-      }
-
-      order = inserted as TestOrderDocument;
-      isNew = true;
-
-      // Insert RawTestResult if HL7 message was generated
-      if (hl7Message) {
-        const rawTestResultCollection = getCollection<any>('raw_test_results');
-        await rawTestResultCollection.insertOne({
-          test_order_id: order._id,
-          barcode: barcode,
-          instrument_id: new ObjectId(instrumentId),
-          hl7_message: hl7Message,
-          status: 'pending',
-          sent_at: now,
-          can_delete: false,
-          created_at: now,
-          created_by: createdBy
-        }, { session });
-      }
-    });
-    }
-
-    // 5. Check instrument mode and reagents for existing orders too (before generating raw results)
-    if (!isNew) {
-      const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
-      if (!instrument) {
-        throw new Error('Instrument not found');
-      }
-
-      if (instrument.mode !== 'ready') {
-        throw new Error(`Instrument is not ready (current mode: ${instrument.mode || 'not set'})`);
-      }
-
-      // Validate all 5 required reagent types (same as new orders)
-      const reagents = await reagentCollection.find({
-        instrument_id: new ObjectId(instrumentId),
-        status: 'in_use'
-      }).toArray();
-
-      // Validate that all 5 required reagent types are present and have sufficient quantity
-      const validationResult = validateRequiredReagents(reagents as any[]);
-      if (!validationResult.valid) {
-        throw new Error(getReagentValidationErrorMessage(validationResult));
-      }
-    }
-
-    // 6. Generate raw test results and HL7 message (3.6.1.3) - For existing orders only
-    // New orders already have RawTestResult created in transaction above
-    if (!isNew && order) {
-      try {
-        // Get instrument for HL7 generation
-        const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
-        if (!instrument) {
-          console.error('Instrument not found for HL7 generation:', instrumentId);
-          return { order: order, isNew: isNew };
-        }
-        
-        // Get all active parameters
-        const parameterService = new ParameterService();
-        const parametersResult = await parameterService.findAll(1, 1000); // Get all parameters
-        
-        if (!parametersResult.success) {
-          console.error('Failed to get parameters:', parametersResult.error);
-          return { order: order, isNew: isNew };
-        }
-
-        if (!parametersResult.data || parametersResult.data.parameters.length === 0) {
-          console.error('No active parameters found in database');
-          return { order: order, isNew: isNew };
-        }
-
-        const parameters = parametersResult.data.parameters;
-        
-        // Get patient for gender-specific ranges
-        const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-        const patient = order.patient_id ? await patientCollection.findOne({ _id: order.patient_id }) : null;
-
-        // Generate raw test results
-        const rawTestResults = generateRawTestResults(parameters, patient);
-
-        if (rawTestResults.length === 0) {
-          console.error('No raw test results generated');
-          return { order: order, isNew: isNew };
-        }
-
-        // Generate HL7 message
-        const hl7Message = await generateHL7Message({
-          testOrder: order,
-          patient: patient,
-          instrument: instrument,
-          rawTestResults: rawTestResults
-        });
-
-        // Save to RawTestResult collection
-        const rawTestResultService = new RawTestResultService();
-        const createResult = await rawTestResultService.create({
-          test_order_id: order._id,
-          barcode: barcode,
-          instrument_id: new ObjectId(instrumentId),
-          hl7_message: hl7Message,
-          status: 'pending',
-          sent_at: now,
-          can_delete: false,
-          created_by: createdBy
-        });
-
-        if (!createResult.success) {
-          console.error('Failed to create raw test result:', createResult.error);
-        }
-      } catch (hl7Error) {
-        // Log error but don't fail the processSample operation
-        console.error('Error generating HL7 message in processSample:', hl7Error);
-      }
-    }
-
-    // Ensure order is defined before returning
-    if (!order) {
-      throw new Error('Failed to create or retrieve test order');
-    }
-
-    return { order: order, isNew: isNew };
+    return { order: order, isNew: false };
   } catch (err) {
     console.error('Error in processSample:', err);
+    // Re-throw validation errors so controller can handle with appropriate status code
+    // Only return null for unexpected errors
+    if (err instanceof Error) {
+      throw err;
+    }
     return null;
   }
 };

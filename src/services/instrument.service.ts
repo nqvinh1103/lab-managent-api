@@ -7,6 +7,8 @@ import {
   InstrumentDocument,
   UpdateInstrumentInput
 } from '../models/Instrument';
+import { InstrumentReagentDocument } from '../models/InstrumentReagent';
+import { TestOrderDocument } from '../models/TestOrder';
 import { createPaginationOptions, createTextSearchFilter, QueryResult, toObjectId } from '../utils/database.helper';
 
 export class InstrumentService {
@@ -72,7 +74,7 @@ export class InstrumentService {
     }
   }
 
-  async findById(id: string | ObjectId): Promise<QueryResult<InstrumentDocument>> {
+  async findById(id: string | ObjectId): Promise<QueryResult<InstrumentDocument & { reagents: InstrumentReagentDocument[]; test_orders: TestOrderDocument[] }>> {
     try {
       const objectId = toObjectId(id);
       if (!objectId) {
@@ -93,9 +95,25 @@ export class InstrumentService {
         };
       }
 
+      // Query reagents installed in this instrument
+      const reagentCollection = getCollection<InstrumentReagentDocument>('instrument_reagents');
+      const reagents = await reagentCollection
+        .find({ instrument_id: objectId })
+        .toArray();
+
+      // Query test orders related to this instrument
+      const testOrderCollection = getCollection<TestOrderDocument>('test_orders');
+      const testOrders = await testOrderCollection
+        .find({ instrument_id: objectId })
+        .toArray();
+
       return {
         success: true,
-        data: instrument
+        data: {
+          ...instrument,
+          reagents,
+          test_orders: testOrders
+        }
       };
     } catch (error) {
       return {
