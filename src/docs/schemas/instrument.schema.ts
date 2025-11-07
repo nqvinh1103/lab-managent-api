@@ -17,14 +17,9 @@
  *         serial_number:
  *           type: string
  *           example: SN-2024-001
- *         status:
- *           type: string
- *           enum: [active, inactive, maintenance, decommissioned]
- *           example: active
  *         mode:
  *           type: string
  *           enum: [ready, maintenance, inactive]
- *           nullable: true
  *           example: ready
  *         mode_reason:
  *           type: string
@@ -35,9 +30,6 @@
  *           format: date-time
  *           nullable: true
  *           example: "2024-01-15T10:00:00.000Z"
- *         is_active:
- *           type: boolean
- *           example: true
  *         deactivated_at:
  *           type: string
  *           format: date-time
@@ -65,8 +57,7 @@
  *         - instrument_name
  *         - instrument_type
  *         - serial_number
- *         - status
- *         - is_active
+ *         - mode
  *       properties:
  *         instrument_name:
  *           type: string
@@ -79,14 +70,9 @@
  *         serial_number:
  *           type: string
  *           example: SN-2024-001
- *         status:
- *           type: string
- *           enum: [active, inactive, maintenance, decommissioned]
- *           example: active
  *         mode:
  *           type: string
  *           enum: [ready, maintenance, inactive]
- *           nullable: true
  *           example: ready
  *         mode_reason:
  *           type: string
@@ -97,9 +83,6 @@
  *           format: date-time
  *           nullable: true
  *           example: "2024-01-15T10:00:00.000Z"
- *         is_active:
- *           type: boolean
- *           example: true
  *         deactivated_at:
  *           type: string
  *           format: date-time
@@ -139,13 +122,9 @@
  *           minLength: 2
  *         serial_number:
  *           type: string
- *         status:
- *           type: string
- *           enum: [active, inactive, maintenance, decommissioned]
  *         mode:
  *           type: string
  *           enum: [ready, maintenance, inactive]
- *           nullable: true
  *         mode_reason:
  *           type: string
  *           nullable: true
@@ -153,8 +132,6 @@
  *           type: string
  *           format: date-time
  *           nullable: true
- *         is_active:
- *           type: boolean
  *         deactivated_at:
  *           type: string
  *           format: date-time

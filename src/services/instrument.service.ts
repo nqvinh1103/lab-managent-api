@@ -210,8 +210,11 @@ export class InstrumentService {
         }
       }
 
+      // Filter out deprecated fields (status, is_active) if present
+      const { status, is_active, ...cleanUpdateData } = updateData as any;
+
       const updateDoc = {
-        ...updateData,
+        ...cleanUpdateData,
         updated_by: userObjectId,
         updated_at: new Date()
       };
@@ -269,101 +272,7 @@ export class InstrumentService {
     }
   }
 
-  async activateInstrument(id: string | ObjectId, updatedBy: ObjectId): Promise<QueryResult<InstrumentDocument>> {
-    try {
-      const objectId = toObjectId(id);
-      if (!objectId) {
-        return {
-          success: false,
-          error: 'Invalid instrument ID',
-          statusCode: HTTP_STATUS.BAD_REQUEST
-        };
-      }
-
-      const result = await this.collection.findOneAndUpdate(
-        { _id: objectId },
-        {
-          $set: {
-            is_active: true,
-            status: 'active',
-            updated_at: new Date(),
-            updated_by: updatedBy
-          },
-          $unset: {
-            deactivated_at: ''
-          }
-        },
-        { returnDocument: 'after' }
-      );
-
-      if (!result) {
-        return {
-          success: false,
-          error: 'Instrument not found',
-          statusCode: HTTP_STATUS.NOT_FOUND
-        };
-      }
-
-      return {
-        success: true,
-        data: result
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
-        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
-      };
-    }
-  }
-
-  async deactivateInstrument(id: string | ObjectId, updatedBy: ObjectId): Promise<QueryResult<InstrumentDocument>> {
-    try {
-      const objectId = toObjectId(id);
-      if (!objectId) {
-        return {
-          success: false,
-          error: 'Invalid instrument ID',
-          statusCode: HTTP_STATUS.BAD_REQUEST
-        };
-      }
-
-      const result = await this.collection.findOneAndUpdate(
-        { _id: objectId },
-        {
-          $set: {
-            is_active: false,
-            status: 'inactive',
-            deactivated_at: new Date(),
-            updated_at: new Date(),
-            updated_by: updatedBy
-          }
-        },
-        { returnDocument: 'after' }
-      );
-
-      if (!result) {
-        return {
-          success: false,
-          error: 'Instrument not found',
-          statusCode: HTTP_STATUS.NOT_FOUND
-        };
-      }
-
-      return {
-        success: true,
-        data: result
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
-        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
-      };
-    }
-  }
-
-  // Change instrument mode (3.6.1.1)
+  // Change instrument mode
   async changeMode(
     id: string | ObjectId,
     newMode: 'ready' | 'maintenance' | 'inactive',
@@ -433,16 +342,39 @@ export class InstrumentService {
         updateDoc.updated_by = updatedBy;
       }
 
+      // Handle mode_reason
       if (modeReason) {
         updateDoc.mode_reason = modeReason;
-      } else {
-        // Clear mode_reason if switching to 'ready'
-        updateDoc.mode_reason = undefined;
+      }
+
+      // Handle deactivated_at: set when mode='inactive', clear when mode='ready'
+      if (newMode === 'inactive') {
+        updateDoc.deactivated_at = new Date();
+      }
+
+      // Build update operation
+      const setOperation: any = { ...updateDoc };
+      const unsetOperation: any = {};
+      
+      // Clear mode_reason and deactivated_at when switching to 'ready'
+      if (newMode === 'ready') {
+        if (!modeReason) {
+          unsetOperation.mode_reason = '';
+        }
+        unsetOperation.deactivated_at = '';
+      } else if (newMode === 'maintenance' && !modeReason) {
+        // Clear mode_reason if switching to maintenance without reason (shouldn't happen due to validation, but handle it)
+        unsetOperation.mode_reason = '';
+      }
+
+      const updateOperation: any = { $set: setOperation };
+      if (Object.keys(unsetOperation).length > 0) {
+        updateOperation.$unset = unsetOperation;
       }
 
       const result = await this.collection.findOneAndUpdate(
         { _id: objectId },
-        { $set: updateDoc, ...(newMode === 'ready' ? { $unset: { mode_reason: '' } } : {}) },
+        updateOperation,
         { returnDocument: 'after' }
       );
 

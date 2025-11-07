@@ -237,112 +237,6 @@ export const deleteInstrument = async (req: Request, res: Response): Promise<voi
   }
 };
 
-// Activate instrument
-export const activateInstrument = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
-      return;
-    }
-
-    const updatedBy = new ObjectId(req.user.id);
-    const result = await getInstrumentService().activateInstrument(id, updatedBy);
-
-    if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || 'Failed to activate instrument',
-        error: result.error
-      });
-      return;
-    }
-
-    // Log activation
-    await logEvent(
-      'UPDATE',
-      'Instrument',
-      id,
-      req.user.id,
-      `Activated instrument: ${result.data!.instrument_name}`,
-      { 
-        instrument_name: result.data!.instrument_name,
-        action: 'activate'
-      }
-    );
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Instrument activated successfully',
-      data: result.data
-    });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to activate instrument'
-    });
-  }
-};
-
-// Deactivate instrument
-export const deactivateInstrument = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
-      return;
-    }
-
-    const updatedBy = new ObjectId(req.user.id);
-    const result = await getInstrumentService().deactivateInstrument(id, updatedBy);
-
-    if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || 'Failed to deactivate instrument',
-        error: result.error
-      });
-      return;
-    }
-
-    // Log deactivation
-    await logEvent(
-      'UPDATE',
-      'Instrument',
-      id,
-      req.user.id,
-      `Deactivated instrument: ${result.data!.instrument_name}`,
-      { 
-        instrument_name: result.data!.instrument_name,
-        action: 'deactivate'
-      }
-    );
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Instrument deactivated successfully',
-      data: result.data
-    });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to deactivate instrument'
-    });
-  }
-};
-
 /**
  * @openapi
  * /instruments/{id}/change-mode:
@@ -351,9 +245,11 @@ export const deactivateInstrument = async (req: Request, res: Response): Promise
  *       - Instruments
  *     summary: Change instrument operational mode
  *     description: |
- *       Change instrument mode to ready, maintenance, or inactive (3.6.1.1)
- *       - ready: Requires QC check within last 24 hours
- *       - maintenance/inactive: Requires mode_reason
+ *       Change instrument mode to ready, maintenance, or inactive.
+ *       - ready: Requires QC check within last 24 hours. Clears deactivated_at.
+ *       - maintenance/inactive: Requires mode_reason. Sets deactivated_at when mode='inactive'.
+ *       
+ *       Note: This replaces the old activate/deactivate endpoints. Use mode='ready' to activate and mode='inactive' to deactivate.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -399,16 +295,16 @@ export const changeModeInstrument = async (req: Request, res: Response): Promise
     const { id } = req.params;
     const { mode, mode_reason } = req.body;
 
-    if (!mode || !['ready', 'maintenance', 'inactive'].includes(mode)) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
+    if (!req.user?.id) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
-        message: 'Invalid mode',
-        error: 'mode must be one of: ready, maintenance, inactive'
+        message: MESSAGES.UNAUTHORIZED,
+        error: 'User not authenticated'
       });
       return;
     }
 
-    const updatedBy = req.user?.id ? new ObjectId(req.user.id) : undefined;
+    const updatedBy = new ObjectId(req.user.id);
     const result = await getInstrumentService().changeMode(id, mode, mode_reason, updatedBy);
 
     if (!result.success) {
