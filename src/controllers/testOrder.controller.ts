@@ -9,6 +9,7 @@ import {
   deleteTestOrder,
   getAllTestOrders,
   getTestOrderById,
+  getTestOrdersByPatientId,
   updateTestOrder,
   processSample,
   addComment,
@@ -20,6 +21,7 @@ import {
   printToPDF,
   syncRawTestResult
 } from '../services/testOrder.service';
+import { PatientService } from '../services/patient.service';
 import { logEvent } from '../utils/eventLog.helper';
 import { ApiError } from '../utils/apiError';
 import { sendSuccessResponse, sendErrorResponse, handleCreateResult, handleUpdateResult, handleGetResult, handleDeleteResult } from '../utils/response.helper';
@@ -130,6 +132,80 @@ export const getOrders = async (req: AuthenticatedRequest, res: Response): Promi
     // Skip logging for read operations since they don't modify data
   } catch (error) {
     console.error('Error fetching test orders:', error);
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+};
+
+/**
+ * @openapi
+ * /test-orders/me:
+ *   get:
+ *     tags:
+ *       - TestOrders
+ *     summary: Get logged-in patient's test orders
+ *     description: Returns all test orders belonging to the authenticated patient
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of patient's test orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/TestOrder'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Patient profile not found
+ *       500:
+ *         description: Server error
+ */
+export const getMyTestOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    const userId = req.user.id;
+    const patientService = new PatientService();
+
+    // Get patient record by user_id
+    const patientResult = await patientService.getByUserId(userId);
+    
+    if (!patientResult.success || !patientResult.data) {
+      sendErrorResponse(
+        res,
+        patientResult.statusCode || HTTP_STATUS.NOT_FOUND,
+        patientResult.error || 'Patient profile not found',
+        'User is not associated with a patient account'
+      );
+      return;
+    }
+
+    const patient = patientResult.data;
+    const patientId = patient._id;
+
+    // Get test orders for this patient
+    const testOrders = await getTestOrdersByPatientId(patientId);
+
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, testOrders);
+
+    // Skip logging for read operations since they don't modify data
+  } catch (error) {
+    console.error('Error fetching patient test orders:', error);
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,

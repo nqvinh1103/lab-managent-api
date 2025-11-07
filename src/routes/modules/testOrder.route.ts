@@ -9,6 +9,7 @@ import {
   exportOrdersToExcel,
   getOrderById,
   getOrders,
+  getMyTestOrders,
   printOrderToPDF,
   processSampleOrder,
   syncRawTestResultController,
@@ -59,6 +60,13 @@ router.get(
   '/',
   authMiddleware,
   getOrders
+)
+
+// Get logged-in patient's test orders (must be before /:id route)
+router.get(
+  '/me',
+  authMiddleware,
+  getMyTestOrders
 )
 
 // Get Test Order by ID

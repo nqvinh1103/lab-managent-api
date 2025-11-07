@@ -151,6 +151,103 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *
+ * /test-orders/me:
+ *   get:
+ *     summary: Get logged-in patient's test orders
+ *     description: |
+ *       Get list of all test orders belonging to the authenticated patient.
+ *       This endpoint automatically filters test orders by the patient_id associated with the logged-in user.
+ *       The patient must be authenticated and have a valid patient profile linked to their user account.
+ *       
+ *       **Access:** Patient portal - authentication required, no privilege check needed
+ *       **Pattern:** Similar to `/patients/me` endpoint
+ *     tags: [TestOrders]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Patient's test orders retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/TestOrder'
+ *                 message:
+ *                   type: string
+ *                   example: Success
+ *             examples:
+ *               with_data:
+ *                 summary: Patient with test orders
+ *                 value:
+ *                   success: true
+ *                   message: "Success"
+ *                   data:
+ *                     - _id: "507f1f77bcf86cd799439011"
+ *                       order_number: "ORD-1704067200000"
+ *                       patient_email: "patient@email.com"
+ *                       patient_name: "Nguyen Van A"
+ *                       patient_gender: "male"
+ *                       patient_phone: "+84912345678"
+ *                       status: "completed"
+ *                       test_results:
+ *                         - parameter_id: "507f1f77bcf86cd799439016"
+ *                           result_value: 120.5
+ *                           unit: "mg/dL"
+ *                           reference_range_text: "70-100 mg/dL"
+ *                           is_flagged: true
+ *                           flag_type: "critical"
+ *                       created_by_name: "Admin User"
+ *                       created_at: "2024-01-01T00:00:00.000Z"
+ *                       run_by_name: "Dr. Nguyen Van B"
+ *                       run_at: "2024-01-05T10:30:00.000Z"
+ *                     - _id: "507f1f77bcf86cd799439012"
+ *                       order_number: "ORD-1704153600000"
+ *                       patient_email: "patient@email.com"
+ *                       patient_name: "Nguyen Van A"
+ *                       status: "pending"
+ *                       test_results: []
+ *                       created_by_name: "Admin User"
+ *                       created_at: "2024-01-10T00:00:00.000Z"
+ *               no_data:
+ *                 summary: Patient with no test orders
+ *                 value:
+ *                   success: true
+ *                   message: "Success"
+ *                   data: []
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "Unauthorized"
+ *               error: "User not authenticated"
+ *       404:
+ *         description: Patient profile not found - User is not associated with a patient account
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "Patient profile not found"
+ *               error: "User is not associated with a patient account"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *
  * /test-orders/{id}:
  *   get:
  *     summary: Get test order by ID
