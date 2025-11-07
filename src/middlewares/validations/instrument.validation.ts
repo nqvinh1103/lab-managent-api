@@ -13,12 +13,16 @@ export const createInstrumentValidation = [
     .notEmpty().withMessage('Serial number is required')
     .trim()
     .isLength({ min: 1 }).withMessage('Serial number is required'),
-  body('status')
-    .notEmpty().withMessage('Status is required')
-    .isIn(['active', 'inactive', 'maintenance', 'decommissioned']).withMessage('Status must be one of: active, inactive, maintenance, decommissioned'),
-  body('is_active')
-    .notEmpty().withMessage('is_active is required')
-    .isBoolean().withMessage('is_active must be a boolean'),
+  body('mode')
+    .notEmpty().withMessage('Mode is required')
+    .isIn(['ready', 'maintenance', 'inactive']).withMessage('Mode must be one of: ready, maintenance, inactive'),
+  body('mode_reason')
+    .optional()
+    .trim()
+    .isLength({ min: 1 }).withMessage('Mode reason cannot be empty if provided'),
+  body('last_qc_check')
+    .optional()
+    .isISO8601().withMessage('Invalid date format for last_qc_check'),
   body('deactivated_at')
     .optional()
     .isISO8601().withMessage('Invalid date format for deactivated_at'),
@@ -43,12 +47,16 @@ export const updateInstrumentValidation = [
     .optional()
     .trim()
     .isLength({ min: 1 }).withMessage('Serial number cannot be empty'),
-  body('status')
+  body('mode')
     .optional()
-    .isIn(['active', 'inactive', 'maintenance', 'decommissioned']).withMessage('Status must be one of: active, inactive, maintenance, decommissioned'),
-  body('is_active')
+    .isIn(['ready', 'maintenance', 'inactive']).withMessage('Mode must be one of: ready, maintenance, inactive'),
+  body('mode_reason')
     .optional()
-    .isBoolean().withMessage('is_active must be a boolean'),
+    .trim()
+    .isLength({ min: 1 }).withMessage('Mode reason cannot be empty if provided'),
+  body('last_qc_check')
+    .optional()
+    .isISO8601().withMessage('Invalid date format for last_qc_check'),
   body('deactivated_at')
     .optional()
     .isISO8601().withMessage('Invalid date format for deactivated_at'),
@@ -73,5 +81,18 @@ export const listInstrumentsValidation = [
   query('search')
     .optional()
     .trim(),
+];
+
+export const changeModeValidation = [
+  param('id')
+    .notEmpty().withMessage('Instrument ID is required')
+    .isMongoId().withMessage('Invalid instrument ID format'),
+  body('mode')
+    .notEmpty().withMessage('Mode is required')
+    .isIn(['ready', 'maintenance', 'inactive']).withMessage('Mode must be one of: ready, maintenance, inactive'),
+  body('mode_reason')
+    .optional()
+    .trim()
+    .isLength({ min: 1 }).withMessage('Mode reason cannot be empty if provided'),
 ];
 
