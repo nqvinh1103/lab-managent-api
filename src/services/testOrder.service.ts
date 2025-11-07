@@ -210,6 +210,90 @@ export const getAllTestOrders = async (): Promise<any[]> => {
   return items;
 };
 
+/**
+ * Get test orders by patient ID
+ * Similar to getAllTestOrders but filtered by patient_id
+ */
+export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any[]> => {
+  const collection = getCollection<TestOrderDocument>(COLLECTION);
+
+  const patientObjectId = patientId instanceof ObjectId ? patientId : new ObjectId(String(patientId));
+
+  const items = await collection
+    .aggregate([
+      {
+        $match: {
+          patient_id: patientObjectId
+        }
+      },
+      {
+        $lookup: {
+          from: "patients",
+          localField: "patient_id",
+          foreignField: "_id",
+          as: "patient_info"
+        }
+      },
+      {
+        $unwind: {
+          path: "$patient_info",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "created_by",
+          foreignField: "_id",
+          as: "created_by_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$created_by_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "run_by",
+          foreignField: "_id",
+          as: "run_by_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$run_by_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          patient_email: "$patient_info.email",
+          patient_name: "$patient_info.full_name",
+          patient_gender: "$patient_info.gender",
+          patient_phone: "$patient_info.phone_number",
+          created_by_name: "$created_by_user.full_name",
+          run_by_name: "$run_by_user.full_name"
+        }
+      },
+      {
+        $project: {
+          patient_info: 0,
+          created_by_user: 0,
+          run_by_user: 0
+        }
+      },
+      {
+        $sort: { created_at: -1 }  // Sort by most recent first (descending)
+      }
+    ])
+    .toArray();
+
+  return items;
+};
+
 
 export const getTestOrderById = async (id: string): Promise<any | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
