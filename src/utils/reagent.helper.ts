@@ -22,23 +22,33 @@ export const validateRequiredReagents = (
 ): ReagentValidationResult => {
   const missing: string[] = [];
   const insufficient: string[] = [];
+  const now = new Date();
 
-  // Get installed reagent names
-  const installedReagentNames = instrumentReagents.map(r => r.reagent_name);
+  // Filter only active reagents (in_use and not expired)
+  const activeReagents = instrumentReagents.filter(r => {
+    const isActive = r.status === 'in_use';
+    const notExpired = !r.expiration_date || new Date(r.expiration_date) > now;
+    return isActive && notExpired;
+  });
 
-  // Check for missing reagents
-  for (const requiredName of REQUIRED_REAGENT_NAMES) {
-    if (!installedReagentNames.includes(requiredName)) {
-      missing.push(requiredName);
+  // Create map by reagent_name (should only have one per type when active)
+  const reagentMap = new Map<string, InstrumentReagentDocument>();
+  activeReagents.forEach(reagent => {
+    const name = reagent.reagent_name;
+    // If multiple exist (shouldn't happen with new business rules), use first one
+    if (!reagentMap.has(name)) {
+      reagentMap.set(name, reagent);
     }
-  }
+  });
 
-  // Check for insufficient quantity (quantity_remaining <= 0)
-  for (const reagent of instrumentReagents) {
-    if (REQUIRED_REAGENT_NAMES.includes(reagent.reagent_name as any)) {
-      if (reagent.quantity_remaining <= 0) {
-        insufficient.push(reagent.reagent_name);
-      }
+  // Check for missing and insufficient reagents
+  for (const requiredName of REQUIRED_REAGENT_NAMES) {
+    const reagent = reagentMap.get(requiredName);
+    
+    if (!reagent) {
+      missing.push(requiredName);
+    } else if (reagent.quantity_remaining <= 0) {
+      insufficient.push(requiredName);
     }
   }
 

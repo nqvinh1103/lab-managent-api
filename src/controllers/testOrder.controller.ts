@@ -715,7 +715,7 @@ export const updateOrder = async (req: AuthenticatedRequest, res: Response): Pro
     }
 
     const data: UpdateTestOrderInput = req.body;
-    const result = await updateTestOrder(id, data);
+    const result = await updateTestOrder(id, data, new ObjectId(req.user.id));
 
     if (!result) {
       sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);

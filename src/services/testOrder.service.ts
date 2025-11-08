@@ -12,7 +12,7 @@ import { QueryResult, toObjectId } from "../utils/database.helper";
 import { applyFlagging } from "../utils/flagging.helper";
 import { generateHL7Message } from "../utils/hl7.generator";
 import { parseHL7Message } from "../utils/hl7.parser";
-import { getReagentValidationErrorMessage, validateRequiredReagents } from "../utils/reagent.helper";
+import { getReagentValidationErrorMessage, REQUIRED_REAGENT_NAMES, validateRequiredReagents } from "../utils/reagent.helper";
 import { generateRawTestResults } from "../utils/testResultGenerator";
 import { withTransaction } from "../utils/transaction.helper";
 import { ParameterService } from "./parameter.service";
@@ -188,6 +188,7 @@ export const getAllTestOrders = async (): Promise<any[]> => {
         $addFields: {
           patient_email: "$patient_info.email",
           patient_name: "$patient_info.full_name",
+          patient_dob: "$patient_info.date_of_birth",
           patient_gender: "$patient_info.gender",
           patient_phone: "$patient_info.phone_number",
           created_by_name: "$created_by_user.full_name",
@@ -272,6 +273,7 @@ export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any
         $addFields: {
           patient_email: "$patient_info.email",
           patient_name: "$patient_info.full_name",
+          patient_dob: "$patient_info.date_of_birth",
           patient_gender: "$patient_info.gender",
           patient_phone: "$patient_info.phone_number",
           created_by_name: "$created_by_user.full_name",
@@ -340,14 +342,65 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
             preserveNullAndEmptyArrays: true
           }
         },
+        // Unwind comments to populate user info for each comment
+        { $unwind: { path: "$comments", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "users",
+            localField: "comments.created_by",
+            foreignField: "_id",
+            as: "comment_user"
+          }
+        },
+        {
+          $unwind: {
+            path: "$comment_user",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $addFields: {
+            "comments.created_by_name": "$comment_user.full_name"
+          }
+        },
+        {
+          $group: {
+            _id: "$_id",
+            order_number: { $first: "$order_number" },
+            patient_id: { $first: "$patient_id" },
+            instrument_id: { $first: "$instrument_id" },
+            barcode: { $first: "$barcode" },
+            status: { $first: "$status" },
+            test_results: { $first: "$test_results" },
+            comments: { $push: "$comments" },
+            run_by: { $first: "$run_by" },
+            run_at: { $first: "$run_at" },
+            created_at: { $first: "$created_at" },
+            created_by: { $first: "$created_by" },
+            updated_at: { $first: "$updated_at" },
+            updated_by: { $first: "$updated_by" },
+            patient_info: { $first: "$patient_info" },
+            created_by_user: { $first: "$created_by_user" },
+            run_by_user: { $first: "$run_by_user" }
+          }
+        },
         {
           $addFields: {
             patient_email: "$patient_info.email",
             patient_name: "$patient_info.full_name",
+            patient_dob: "$patient_info.date_of_birth",
             patient_gender: "$patient_info.gender",
             patient_phone: "$patient_info.phone_number",
             created_by_name: "$created_by_user.full_name",
-            run_by_name: "$run_by_user.full_name"
+            run_by_name: "$run_by_user.full_name",
+            // Filter out null comments (from unwind when comments array is empty)
+            comments: {
+              $filter: {
+                input: "$comments",
+                as: "comment",
+                cond: { $ne: ["$$comment", null] }
+              }
+            }
           }
         },
         {
@@ -369,7 +422,8 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
 
 export const updateTestOrder = async (
   id: string,
-  data: UpdateTestOrderWithPatientInput
+  data: UpdateTestOrderWithPatientInput,
+  updatedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   const patientCollection = getCollection<any>(PATIENT_COLLECTION);
@@ -387,7 +441,7 @@ export const updateTestOrder = async (
     // Separate patient fields from test order fields
     const patientFields = ['full_name', 'date_of_birth', 'gender', 'phone_number', 'address'];
     const patientUpdateData: any = {};
-    const testOrderUpdateData: any = { updated_at: now };
+    const testOrderUpdateData: any = { updated_at: now, updated_by: updatedBy };
 
     Object.keys(data).forEach((key) => {
       if (patientFields.includes(key)) {
@@ -416,7 +470,7 @@ export const updateTestOrder = async (
             $set: { 
               ...patientUpdateData, 
               updated_at: now,
-              updated_by: testOrder.updated_by  // Keep the last updater for patient
+              updated_by: updatedBy
             } 
           },
           { session }
@@ -536,13 +590,28 @@ export const deleteComment = async (
   try {
     const _id = new ObjectId(orderId);
 
-    // Soft delete: set deleted_at field on specific comment
-    const updateField = `comments.${commentIndex}`;
+    // Get the current order to access comments array
+    const order = await collection.findOne({ _id });
+    if (!order) {
+      return null;
+    }
+
+    // Validate comment index
+    if (!order.comments || commentIndex < 0 || commentIndex >= order.comments.length) {
+      return null;
+    }
+
+    // Remove comment from array by index
+    // Create a new array without the comment at the specified index
+    const updatedComments = [...order.comments];
+    updatedComments.splice(commentIndex, 1);
+
+    // Update the order with the new comments array
     await collection.updateOne(
       { _id },
       { 
-        $set: { 
-          [`${updateField}.deleted_at`]: now,
+        $set: {
+          comments: updatedComments,
           updated_at: now,
           updated_by: deletedBy
         }
@@ -552,6 +621,7 @@ export const deleteComment = async (
     const updated = await collection.findOne({ _id });
     return updated as TestOrderDocument | null;
   } catch (err) {
+    console.error('Error deleting comment:', err);
     return null;
   }
 };
@@ -831,39 +901,78 @@ export const completeTestOrder = async (
 
     // Pre-validate and prepare reagent usage data (outside transaction)
     let reagentLookupMap: Map<string, any> = new Map();
-    if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-      // Ensure instrument_id is ObjectId for consistent querying
-      const instrumentObjectId = toObjectId(order.instrument_id);
-      if (!instrumentObjectId) {
-        throw new Error('Invalid instrument ID in test order');
-      }
+    
+    // Ensure instrument_id is ObjectId for consistent querying
+    if (!order.instrument_id) {
+      throw new Error('Test order must have an instrument_id to complete');
+    }
+    
+    const instrumentObjectId = toObjectId(order.instrument_id);
+    if (!instrumentObjectId) {
+      throw new Error('Invalid instrument ID in test order');
+    }
 
-      // Extract all reagent_lot_numbers for batch query
-      const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
-      
-      // Batch query all reagents at once (outside transaction for validation)
+    // If reagentUsage not provided, auto-select reagents for each required type
+    if (!reagentUsage || reagentUsage.length === 0) {
+      // Get all active reagents for this instrument
       const reagents = await reagentCollection.find({
-        reagent_lot_number: { $in: reagentLotNumbers },
         instrument_id: instrumentObjectId,
-        status: 'in_use'
+        status: 'in_use',
+        reagent_name: { $in: REQUIRED_REAGENT_NAMES }
       }).toArray();
 
-      // Create lookup map for O(1) access
+      // Create map by reagent_name (should only have one per type)
+      const reagentMap = new Map<string, any>();
       reagents.forEach(reagent => {
-        reagentLookupMap.set(reagent.reagent_lot_number, reagent);
+        const name = reagent.reagent_name;
+        if (!reagentMap.has(name)) {
+          reagentMap.set(name, reagent);
+        }
       });
 
-      // Validate all reagents exist before entering transaction
-      const missingReagents: string[] = [];
-      for (const usage of reagentUsage) {
-        if (!reagentLookupMap.has(usage.reagent_lot_number)) {
-          missingReagents.push(usage.reagent_lot_number);
+      // Auto-generate reagentUsage array
+      reagentUsage = [];
+      for (const requiredName of REQUIRED_REAGENT_NAMES) {
+        const reagent = reagentMap.get(requiredName);
+        if (!reagent) {
+          throw new Error(`Required reagent "${requiredName}" is not installed on this instrument`);
         }
+        
+        // Use usage_per_run_max if available, otherwise use usage_per_run_min, otherwise default to 1
+        const quantityUsed = reagent.usage_per_run_max || reagent.usage_per_run_min || 1;
+        
+        reagentUsage.push({
+          reagent_lot_number: reagent.reagent_lot_number,
+          quantity_used: quantityUsed
+        });
       }
+    }
 
-      if (missingReagents.length > 0) {
-        throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
+    // Extract all reagent_lot_numbers for batch query
+    const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
+    
+    // Batch query all reagents at once (outside transaction for validation)
+    const reagents = await reagentCollection.find({
+      reagent_lot_number: { $in: reagentLotNumbers },
+      instrument_id: instrumentObjectId,
+      status: 'in_use'
+    }).toArray();
+
+    // Create lookup map for O(1) access
+    reagents.forEach(reagent => {
+      reagentLookupMap.set(reagent.reagent_lot_number, reagent);
+    });
+
+    // Validate all reagents exist before entering transaction
+    const missingReagents: string[] = [];
+    for (const usage of reagentUsage) {
+      if (!reagentLookupMap.has(usage.reagent_lot_number)) {
+        missingReagents.push(usage.reagent_lot_number);
       }
+    }
+
+    if (missingReagents.length > 0) {
+      throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
     }
 
     // Execute within transaction: update TestOrder status + update InstrumentReagent quantity + insert ReagentUsageHistory
@@ -884,14 +993,8 @@ export const completeTestOrder = async (
         { session }
       );
 
-      // Track reagent usage if provided
-      if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-        // Ensure instrument_id is ObjectId (consistent with pre-validation)
-        const instrumentObjectId = toObjectId(order.instrument_id);
-        if (!instrumentObjectId) {
-          throw new Error('Invalid instrument ID in test order');
-        }
-
+      // Track reagent usage
+      if (reagentUsage && reagentUsage.length > 0) {
         for (const usage of reagentUsage) {
           // Get reagent from pre-validated lookup map
           const reagent = reagentLookupMap.get(usage.reagent_lot_number);
