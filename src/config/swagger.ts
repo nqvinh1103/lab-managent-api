@@ -60,6 +60,10 @@ const options: swaggerJsdoc.Options = {
       {
         name: 'Configurations',
         description: 'Configuration management endpoints'
+      },
+      {
+        name: 'FlaggingConfiguration',
+        description: 'Flagging configuration management endpoints for test result flagging rules'
       }
     ]
   },
