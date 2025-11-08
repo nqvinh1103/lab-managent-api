@@ -12,7 +12,7 @@ import { QueryResult, toObjectId } from "../utils/database.helper";
 import { applyFlagging } from "../utils/flagging.helper";
 import { generateHL7Message } from "../utils/hl7.generator";
 import { parseHL7Message } from "../utils/hl7.parser";
-import { getReagentValidationErrorMessage, validateRequiredReagents } from "../utils/reagent.helper";
+import { getReagentValidationErrorMessage, REQUIRED_REAGENT_NAMES, validateRequiredReagents } from "../utils/reagent.helper";
 import { generateRawTestResults } from "../utils/testResultGenerator";
 import { withTransaction } from "../utils/transaction.helper";
 import { ParameterService } from "./parameter.service";
@@ -901,39 +901,78 @@ export const completeTestOrder = async (
 
     // Pre-validate and prepare reagent usage data (outside transaction)
     let reagentLookupMap: Map<string, any> = new Map();
-    if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-      // Ensure instrument_id is ObjectId for consistent querying
-      const instrumentObjectId = toObjectId(order.instrument_id);
-      if (!instrumentObjectId) {
-        throw new Error('Invalid instrument ID in test order');
-      }
+    
+    // Ensure instrument_id is ObjectId for consistent querying
+    if (!order.instrument_id) {
+      throw new Error('Test order must have an instrument_id to complete');
+    }
+    
+    const instrumentObjectId = toObjectId(order.instrument_id);
+    if (!instrumentObjectId) {
+      throw new Error('Invalid instrument ID in test order');
+    }
 
-      // Extract all reagent_lot_numbers for batch query
-      const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
-      
-      // Batch query all reagents at once (outside transaction for validation)
+    // If reagentUsage not provided, auto-select reagents for each required type
+    if (!reagentUsage || reagentUsage.length === 0) {
+      // Get all active reagents for this instrument
       const reagents = await reagentCollection.find({
-        reagent_lot_number: { $in: reagentLotNumbers },
         instrument_id: instrumentObjectId,
-        status: 'in_use'
+        status: 'in_use',
+        reagent_name: { $in: REQUIRED_REAGENT_NAMES }
       }).toArray();
 
-      // Create lookup map for O(1) access
+      // Create map by reagent_name (should only have one per type)
+      const reagentMap = new Map<string, any>();
       reagents.forEach(reagent => {
-        reagentLookupMap.set(reagent.reagent_lot_number, reagent);
+        const name = reagent.reagent_name;
+        if (!reagentMap.has(name)) {
+          reagentMap.set(name, reagent);
+        }
       });
 
-      // Validate all reagents exist before entering transaction
-      const missingReagents: string[] = [];
-      for (const usage of reagentUsage) {
-        if (!reagentLookupMap.has(usage.reagent_lot_number)) {
-          missingReagents.push(usage.reagent_lot_number);
+      // Auto-generate reagentUsage array
+      reagentUsage = [];
+      for (const requiredName of REQUIRED_REAGENT_NAMES) {
+        const reagent = reagentMap.get(requiredName);
+        if (!reagent) {
+          throw new Error(`Required reagent "${requiredName}" is not installed on this instrument`);
         }
+        
+        // Use usage_per_run_max if available, otherwise use usage_per_run_min, otherwise default to 1
+        const quantityUsed = reagent.usage_per_run_max || reagent.usage_per_run_min || 1;
+        
+        reagentUsage.push({
+          reagent_lot_number: reagent.reagent_lot_number,
+          quantity_used: quantityUsed
+        });
       }
+    }
 
-      if (missingReagents.length > 0) {
-        throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
+    // Extract all reagent_lot_numbers for batch query
+    const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
+    
+    // Batch query all reagents at once (outside transaction for validation)
+    const reagents = await reagentCollection.find({
+      reagent_lot_number: { $in: reagentLotNumbers },
+      instrument_id: instrumentObjectId,
+      status: 'in_use'
+    }).toArray();
+
+    // Create lookup map for O(1) access
+    reagents.forEach(reagent => {
+      reagentLookupMap.set(reagent.reagent_lot_number, reagent);
+    });
+
+    // Validate all reagents exist before entering transaction
+    const missingReagents: string[] = [];
+    for (const usage of reagentUsage) {
+      if (!reagentLookupMap.has(usage.reagent_lot_number)) {
+        missingReagents.push(usage.reagent_lot_number);
       }
+    }
+
+    if (missingReagents.length > 0) {
+      throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
     }
 
     // Execute within transaction: update TestOrder status + update InstrumentReagent quantity + insert ReagentUsageHistory
@@ -954,14 +993,8 @@ export const completeTestOrder = async (
         { session }
       );
 
-      // Track reagent usage if provided
-      if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-        // Ensure instrument_id is ObjectId (consistent with pre-validation)
-        const instrumentObjectId = toObjectId(order.instrument_id);
-        if (!instrumentObjectId) {
-          throw new Error('Invalid instrument ID in test order');
-        }
-
+      // Track reagent usage
+      if (reagentUsage && reagentUsage.length > 0) {
         for (const usage of reagentUsage) {
           // Get reagent from pre-validated lookup map
           const reagent = reagentLookupMap.get(usage.reagent_lot_number);

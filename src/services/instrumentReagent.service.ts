@@ -65,11 +65,77 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
 
   const reagent = reagentResult.data;
 
-  // Execute within transaction: insert InstrumentReagent + atomic stock deduction
-  // Transaction ensures both operations succeed or fail together
-  const newDoc = await withTransaction(async (session) => {
+  // Execute within transaction: check existing reagents + insert/update InstrumentReagent + atomic stock deduction
+  // Transaction ensures all operations succeed or fail together
+  const result = await withTransaction(async (session) => {
+    // Check if reagent with same reagent_inventory_id AND instrument_id AND status 'in_use' exists
+    const existingSameInventory = await collection.findOne({
+      instrument_id: instrumentObjectId,
+      reagent_inventory_id: reagentInventoryObjectId,
+      status: 'in_use'
+    }, { session });
+
+    if (existingSameInventory) {
+      // REFILL: Update quantity_remaining and total quantity
+      // First, deduct stock from inventory
+      const updatedInventory = await inventoryService.atomicDeductStock(
+        reagentInventoryObjectId,
+        data.quantity,
+        session
+      );
+
+      if (!updatedInventory) {
+        throw new Error(`Insufficient stock. Available stock is less than requested quantity (${data.quantity})`);
+      }
+
+      // Update expiration_date if new one is later (fresher batch)
+      const updateData: any = {
+        quantity_remaining: existingSameInventory.quantity_remaining + data.quantity,
+        quantity: existingSameInventory.quantity + data.quantity,
+        updated_at: now
+      };
+
+      if (inventory.expiration_date) {
+        const existingExpDate = existingSameInventory.expiration_date 
+          ? new Date(existingSameInventory.expiration_date).getTime() 
+          : 0;
+        const newExpDate = new Date(inventory.expiration_date).getTime();
+        
+        if (newExpDate > existingExpDate) {
+          updateData.expiration_date = inventory.expiration_date;
+        }
+      }
+
+      const updatedReagent = await collection.findOneAndUpdate(
+        { _id: existingSameInventory._id },
+        { $set: updateData },
+        { returnDocument: 'after', session }
+      );
+
+      if (!updatedReagent) {
+        throw new Error('Failed to update reagent');
+      }
+
+      return { doc: updatedReagent as InstrumentReagentDocument, isRefill: true };
+    }
+
+    // Check if reagent with same reagent_name but different reagent_inventory_id exists
+    const existingDifferentInventory = await collection.findOne({
+      instrument_id: instrumentObjectId,
+      reagent_name: reagent.reagent_name,
+      status: 'in_use',
+      reagent_inventory_id: { $ne: reagentInventoryObjectId }
+    }, { session });
+
+    if (existingDifferentInventory) {
+      throw new Error(
+        `Reagent "${reagent.reagent_name}" from different inventory (lot: ${existingDifferentInventory.reagent_lot_number}) is already installed. ` +
+        `Please remove the existing reagent before installing a new one with lot number ${inventory.lot_number}.`
+      );
+    }
+
+    // No existing reagent - create new one
     // Atomic stock deduction - prevents race conditions
-    // This will return null if insufficient stock, causing transaction to fail
     const updatedInventory = await inventoryService.atomicDeductStock(
       reagentInventoryObjectId,
       data.quantity,
@@ -111,8 +177,11 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
     // Insert InstrumentReagent within transaction
     await collection.insertOne(docToInsert, { session });
 
-    return docToInsert;
+    return { doc: docToInsert as InstrumentReagentDocument, isRefill: false };
   });
+
+  const newDoc = result.doc;
+  const isRefill = result.isRefill;
 
   // Log event for audit trail (SRS 3.6.2.1) - outside transaction
   // Event logging failure should not fail the installation
@@ -124,12 +193,17 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
         ? inventory.expiration_date
         : new Date(inventory.expiration_date).toISOString();
 
+    const eventAction = isRefill ? 'UPDATE' : 'CREATE';
+    const eventMessage = isRefill 
+      ? `Refilled reagent: ${reagent.reagent_name} (Lot: ${inventory.lot_number}) on instrument ${data.instrument_id}`
+      : `Installed reagent: ${reagent.reagent_name} (Lot: ${inventory.lot_number}) on instrument ${data.instrument_id}`;
+
     await logEvent(
-      'CREATE',
+      eventAction,
       'InstrumentReagent',
       newDoc._id!,
       userObjectId,
-      `Installed reagent: ${reagent.reagent_name} (Lot: ${inventory.lot_number}) on instrument ${data.instrument_id}`,
+      eventMessage,
       {
         reagent_name: reagent.reagent_name,
         reagent_id: inventory.reagent_id.toString(),
@@ -137,6 +211,8 @@ export const createInstrumentReagent = async (data: CreateInstrumentReagentInput
         reagent_lot_number: inventory.lot_number,
         expiration_date: expirationDate,
         quantity: data.quantity,
+        quantity_remaining: newDoc.quantity_remaining,
+        is_refill: isRefill,
         instrument_id: data.instrument_id.toString()
       }
     );
