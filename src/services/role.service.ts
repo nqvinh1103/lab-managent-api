@@ -1,5 +1,6 @@
 import { ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { CreateRoleInput, RoleDocument, UpdateRoleInput } from '../models/Role';
 import { RolePrivilegeDocument } from '../models/RolePrivilege';
 import { createPaginationOptions, createSortOptions, OperationResult, QueryResult, toObjectId } from '../utils/database.helper';
@@ -74,12 +75,14 @@ export class RoleService {
 
       return {
         success: false,
-        error: 'Failed to create role'
+        error: 'Failed to create role',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -90,7 +93,8 @@ export class RoleService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid role ID'
+          error: 'Invalid role ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -99,7 +103,8 @@ export class RoleService {
       if (!role) {
         return {
           success: false,
-          error: 'Role not found'
+          error: 'Role not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -110,7 +115,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -122,7 +128,8 @@ export class RoleService {
       if (!role) {
         return {
           success: false,
-          error: 'Role not found'
+          error: 'Role not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -133,7 +140,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -144,7 +152,8 @@ export class RoleService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid role ID'
+          error: 'Invalid role ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -219,7 +228,8 @@ export class RoleService {
       if (!result) {
         return {
           success: false,
-          error: 'Role not found'
+          error: 'Role not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -230,7 +240,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -241,7 +252,8 @@ export class RoleService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid role ID'
+          error: 'Invalid role ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -254,7 +266,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -278,7 +291,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -291,7 +305,8 @@ export class RoleService {
       if (!roleObjectId || !privilegeObjectId) {
         return {
           success: false,
-          error: 'Invalid role ID or privilege ID'
+          error: 'Invalid role ID or privilege ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -331,7 +346,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -344,7 +360,8 @@ export class RoleService {
       if (!roleObjectId || !privilegeObjectId) {
         return {
           success: false,
-          error: 'Invalid role ID or privilege ID'
+          error: 'Invalid role ID or privilege ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -379,7 +396,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -394,7 +412,8 @@ export class RoleService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

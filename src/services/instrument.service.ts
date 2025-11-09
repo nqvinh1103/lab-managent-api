@@ -1,5 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import {
   CreateInstrumentInput,
@@ -7,6 +8,8 @@ import {
   UpdateInstrumentInput
 } from '../models/Instrument';
 import { ConfigurationDocument } from '../models/Configuration';
+import { InstrumentReagentDocument } from '../models/InstrumentReagent';
+import { TestOrderDocument } from '../models/TestOrder';
 import { createPaginationOptions, createTextSearchFilter, QueryResult, toObjectId } from '../utils/database.helper';
 
 export class InstrumentService {
@@ -21,7 +24,8 @@ export class InstrumentService {
       if (!userObjectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -33,7 +37,8 @@ export class InstrumentService {
       if (existingInstrument) {
         return {
           success: false,
-          error: 'Instrument with this serial number already exists'
+          error: 'Instrument with this serial number already exists',
+          statusCode: HTTP_STATUS.CONFLICT
         };
       }
 
@@ -80,23 +85,26 @@ export class InstrumentService {
 
       return {
         success: false,
-        error: 'Failed to create instrument'
+        error: 'Failed to create instrument',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
 
-  async findById(id: string | ObjectId): Promise<QueryResult<InstrumentDocument>> {
+  async findById(id: string | ObjectId): Promise<QueryResult<InstrumentDocument & { reagents: InstrumentReagentDocument[]; test_orders: TestOrderDocument[] }>> {
     try {
       const objectId = toObjectId(id);
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid instrument ID'
+          error: 'Invalid instrument ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -105,18 +113,36 @@ export class InstrumentService {
       if (!instrument) {
         return {
           success: false,
-          error: 'Instrument not found'
+          error: 'Instrument not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
+      // Query reagents installed in this instrument
+      const reagentCollection = getCollection<InstrumentReagentDocument>('instrument_reagents');
+      const reagents = await reagentCollection
+        .find({ instrument_id: objectId })
+        .toArray();
+
+      // Query test orders related to this instrument
+      const testOrderCollection = getCollection<TestOrderDocument>('test_orders');
+      const testOrders = await testOrderCollection
+        .find({ instrument_id: objectId })
+        .toArray();
+
       return {
         success: true,
-        data: instrument
+        data: {
+          ...instrument,
+          reagents,
+          test_orders: testOrders
+        }
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -161,7 +187,8 @@ export class InstrumentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -176,7 +203,8 @@ export class InstrumentService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid instrument ID'
+          error: 'Invalid instrument ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -184,7 +212,8 @@ export class InstrumentService {
       if (!userObjectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -198,7 +227,8 @@ export class InstrumentService {
         if (existingInstrument) {
           return {
             success: false,
-            error: 'Instrument with this serial number already exists'
+            error: 'Instrument with this serial number already exists',
+            statusCode: HTTP_STATUS.CONFLICT
           };
         }
       }
@@ -223,8 +253,11 @@ export class InstrumentService {
         updateData.configuration_id = configObjectId as any;
       }
 
+      // Filter out deprecated fields (status, is_active) if present
+      const { status, is_active, ...cleanUpdateData } = updateData as any;
+
       const updateDoc = {
-        ...updateData,
+        ...cleanUpdateData,
         updated_by: userObjectId,
         updated_at: new Date()
       };
@@ -238,7 +271,8 @@ export class InstrumentService {
       if (!result) {
         return {
           success: false,
-          error: 'Instrument not found'
+          error: 'Instrument not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -249,7 +283,8 @@ export class InstrumentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -260,7 +295,8 @@ export class InstrumentService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid instrument ID'
+          error: 'Invalid instrument ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -273,100 +309,13 @@ export class InstrumentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
 
-  async activateInstrument(id: string | ObjectId, updatedBy: ObjectId): Promise<QueryResult<InstrumentDocument>> {
-    try {
-      const objectId = toObjectId(id);
-      if (!objectId) {
-        return {
-          success: false,
-          error: 'Invalid instrument ID'
-        };
-      }
-
-      const result = await this.collection.findOneAndUpdate(
-        { _id: objectId },
-        {
-          $set: {
-            is_active: true,
-            status: 'active',
-            updated_at: new Date(),
-            updated_by: updatedBy
-          },
-          $unset: {
-            deactivated_at: ''
-          }
-        },
-        { returnDocument: 'after' }
-      );
-
-      if (!result) {
-        return {
-          success: false,
-          error: 'Instrument not found'
-        };
-      }
-
-      return {
-        success: true,
-        data: result
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
-      };
-    }
-  }
-
-  async deactivateInstrument(id: string | ObjectId, updatedBy: ObjectId): Promise<QueryResult<InstrumentDocument>> {
-    try {
-      const objectId = toObjectId(id);
-      if (!objectId) {
-        return {
-          success: false,
-          error: 'Invalid instrument ID'
-        };
-      }
-
-      const result = await this.collection.findOneAndUpdate(
-        { _id: objectId },
-        {
-          $set: {
-            is_active: false,
-            status: 'inactive',
-            deactivated_at: new Date(),
-            updated_at: new Date(),
-            updated_by: updatedBy
-          }
-        },
-        { returnDocument: 'after' }
-      );
-
-      if (!result) {
-        return {
-          success: false,
-          error: 'Instrument not found'
-        };
-      }
-
-      return {
-        success: true,
-        data: result
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
-      };
-    }
-  }
-
-  // Change instrument mode (3.6.1.1)
+  // Change instrument mode
   async changeMode(
     id: string | ObjectId,
     newMode: 'ready' | 'maintenance' | 'inactive',
@@ -378,7 +327,8 @@ export class InstrumentService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid instrument ID'
+          error: 'Invalid instrument ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -387,7 +337,8 @@ export class InstrumentService {
       if (!instrument) {
         return {
           success: false,
-          error: 'Instrument not found'
+          error: 'Instrument not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -397,7 +348,8 @@ export class InstrumentService {
         if (!instrument.last_qc_check) {
           return {
             success: false,
-            error: 'Cannot set to ready mode: QC check has never been performed'
+            error: 'Cannot set to ready mode: QC check has never been performed',
+            statusCode: HTTP_STATUS.BAD_REQUEST
           };
         }
 
@@ -408,7 +360,8 @@ export class InstrumentService {
         if (hoursSinceQC > 24) {
           return {
             success: false,
-            error: 'Cannot set to ready mode: QC check must be performed within the last 24 hours'
+            error: 'Cannot set to ready mode: QC check must be performed within the last 24 hours',
+            statusCode: HTTP_STATUS.BAD_REQUEST
           };
         }
       } else if (newMode === 'maintenance' || newMode === 'inactive') {
@@ -416,7 +369,8 @@ export class InstrumentService {
         if (!modeReason || modeReason.trim().length === 0) {
           return {
             success: false,
-            error: `mode_reason is required when setting mode to ${newMode}`
+            error: `mode_reason is required when setting mode to ${newMode}`,
+            statusCode: HTTP_STATUS.BAD_REQUEST
           };
         }
       }
@@ -431,23 +385,47 @@ export class InstrumentService {
         updateDoc.updated_by = updatedBy;
       }
 
+      // Handle mode_reason
       if (modeReason) {
         updateDoc.mode_reason = modeReason;
-      } else {
-        // Clear mode_reason if switching to 'ready'
-        updateDoc.mode_reason = undefined;
+      }
+
+      // Handle deactivated_at: set when mode='inactive', clear when mode='ready'
+      if (newMode === 'inactive') {
+        updateDoc.deactivated_at = new Date();
+      }
+
+      // Build update operation
+      const setOperation: any = { ...updateDoc };
+      const unsetOperation: any = {};
+      
+      // Clear mode_reason and deactivated_at when switching to 'ready'
+      if (newMode === 'ready') {
+        if (!modeReason) {
+          unsetOperation.mode_reason = '';
+        }
+        unsetOperation.deactivated_at = '';
+      } else if (newMode === 'maintenance' && !modeReason) {
+        // Clear mode_reason if switching to maintenance without reason (shouldn't happen due to validation, but handle it)
+        unsetOperation.mode_reason = '';
+      }
+
+      const updateOperation: any = { $set: setOperation };
+      if (Object.keys(unsetOperation).length > 0) {
+        updateOperation.$unset = unsetOperation;
       }
 
       const result = await this.collection.findOneAndUpdate(
         { _id: objectId },
-        { $set: updateDoc, ...(newMode === 'ready' ? { $unset: { mode_reason: '' } } : {}) },
+        updateOperation,
         { returnDocument: 'after' }
       );
 
       if (!result) {
         return {
           success: false,
-          error: 'Failed to change instrument mode'
+          error: 'Failed to change instrument mode',
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
         };
       }
 
@@ -458,7 +436,8 @@ export class InstrumentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

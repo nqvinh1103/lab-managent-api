@@ -4,6 +4,7 @@ import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { UserService } from '../services/user.service';
 import { logEvent } from '../utils/eventLog.helper';
+import { handleCreateResult, handleGetResult, handleUpdateResult, handleDeleteResult, sendSuccessResponse, sendErrorResponse } from '../utils/response.helper';
 
 let userService: UserService | null = null;
 
@@ -23,21 +24,7 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().create(userData);
 
     if (!result.success) {
-      // Handle duplicate email/phone specific errors with 409 Conflict status
-      if (result.error?.includes('already exists')) {
-        res.status(HTTP_STATUS.CONFLICT).json({
-          success: false,
-          message: result.error,
-          error: result.error
-        });
-        return;
-      }
-      
-      res.status(result.statusCode || HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: MESSAGES.DB_SAVE_ERROR,
-        error: result.error
-      });
+      handleCreateResult(res, result);
       return;
     }
 
@@ -51,17 +38,14 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       { email: result.data!.email, full_name: result.data!.full_name }
     );
 
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      message: MESSAGES.CREATED,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.CREATED, MESSAGES.CREATED, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to create user'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to create user'
+    );
   }
 };
 
@@ -75,33 +59,36 @@ export const getAllUsers = async (req: Request, res: Response): Promise<void> =>
     const countResult = await getUserService().count();
 
     if (!result.success) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: MESSAGES.DB_QUERY_ERROR,
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.DB_QUERY_ERROR,
+        result.error
+      );
       return;
     }
 
     const total = countResult.data || 0;
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data,
-      pagination: {
+    sendSuccessResponse(
+      res,
+      HTTP_STATUS.OK,
+      MESSAGES.SUCCESS,
+      result.data,
+      {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit)
       }
-    });
+    );
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get users'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get users'
+    );
   }
 };
 
@@ -112,25 +99,20 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
     const result = await getUserService().findById(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.USER_NOT_FOUND,
-        error: result.error
+      handleGetResult(res, result, {
+        notFoundMessage: MESSAGES.USER_NOT_FOUND
       });
       return;
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get user'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get user'
+    );
   }
 };
 
@@ -145,21 +127,7 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().findByIdAndUpdate(id, updateData);
 
     if (!result.success) {
-      // Handle duplicate email/phone specific errors with 409 Conflict status
-      if (result.error?.includes('already exists')) {
-        res.status(HTTP_STATUS.CONFLICT).json({
-          success: false,
-          message: result.error,
-          error: result.error
-        });
-        return;
-      }
-      
-      res.status(result.statusCode || HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.DB_UPDATE_ERROR,  
-        error: result.error
-      });
+      handleUpdateResult(res, result);
       return;
     }
 
@@ -177,17 +145,14 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
       }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.UPDATED,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to update user'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to update user'
+    );
   }
 };
 
@@ -203,11 +168,7 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().deleteById(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.DB_DELETE_ERROR,
-        error: result.error
-      });
+      handleDeleteResult(res, result);
       return;
     }
 
@@ -221,17 +182,14 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
       { email: userInfo?.email, full_name: userInfo?.full_name }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.DELETED,
-      data: { deletedCount: result.deletedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED, { deletedCount: result.deletedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to delete user'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to delete user'
+    );
   }
 };
 
@@ -245,11 +203,12 @@ export const assignRole = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().assignRole(id, roleId, createdBy);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Failed to assign role',
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        'Failed to assign role',
+        result.error
+      );
       return;
     }
 
@@ -264,17 +223,14 @@ export const assignRole = async (req: Request, res: Response): Promise<void> => 
       { roleId, email: userResult.data?.email }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Role assigned successfully',
-      data: { modifiedCount: result.modifiedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'Role assigned successfully', { modifiedCount: result.modifiedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to assign role'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to assign role'
+    );
   }
 };
 
@@ -286,11 +242,12 @@ export const removeRole = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().removeRole(id, roleId);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Failed to remove role',
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        'Failed to remove role',
+        result.error
+      );
       return;
     }
 
@@ -305,17 +262,14 @@ export const removeRole = async (req: Request, res: Response): Promise<void> => 
       { roleId, email: userResult.data?.email }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Role removed successfully',
-      data: { modifiedCount: result.modifiedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'Role removed successfully', { modifiedCount: result.modifiedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to remove role'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to remove role'
+    );
   }
 };
 
@@ -326,11 +280,12 @@ export const lockUser = async (req: Request, res: Response): Promise<void> => {
     const result = await getUserService().lockUser(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Failed to lock user',
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        'Failed to lock user',
+        result.error
+      );
       return;
     }
 
@@ -345,17 +300,14 @@ export const lockUser = async (req: Request, res: Response): Promise<void> => {
       { email: userResult.data?.email }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'User locked successfully',
-      data: { modifiedCount: result.modifiedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'User locked successfully', { modifiedCount: result.modifiedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to lock user'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to lock user'
+    );
   }
 };
 
@@ -366,11 +318,12 @@ export const unlockUser = async (req: Request, res: Response): Promise<void> => 
     const result = await getUserService().unlockUser(id);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Failed to unlock user',
-        error: result.error
-      });
+      sendErrorResponse(
+        res,
+        result.statusCode || HTTP_STATUS.BAD_REQUEST,
+        'Failed to unlock user',
+        result.error
+      );
       return;
     }
 
@@ -385,16 +338,13 @@ export const unlockUser = async (req: Request, res: Response): Promise<void> => 
       { email: userResult.data?.email }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'User unlocked successfully',
-      data: { modifiedCount: result.modifiedCount }
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, 'User unlocked successfully', { modifiedCount: result.modifiedCount });
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to unlock user'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to unlock user'
+    );
   }
 };

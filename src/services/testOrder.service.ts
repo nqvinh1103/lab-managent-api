@@ -1,6 +1,7 @@
 import * as ExcelJS from "exceljs";
 import { ObjectId } from "mongodb";
 import { getCollection } from "../config/database";
+import { HTTP_STATUS } from "../constants/httpStatus";
 import {
   CreateTestOrderInput,
   ITestOrder,
@@ -11,7 +12,7 @@ import { QueryResult, toObjectId } from "../utils/database.helper";
 import { applyFlagging } from "../utils/flagging.helper";
 import { generateHL7Message } from "../utils/hl7.generator";
 import { parseHL7Message } from "../utils/hl7.parser";
-import { getReagentValidationErrorMessage, validateRequiredReagents } from "../utils/reagent.helper";
+import { getReagentValidationErrorMessage, REQUIRED_REAGENT_NAMES, validateRequiredReagents } from "../utils/reagent.helper";
 import { generateRawTestResults } from "../utils/testResultGenerator";
 import { withTransaction } from "../utils/transaction.helper";
 import { ParameterService } from "./parameter.service";
@@ -33,7 +34,7 @@ export const createTestOrder = async (
     return {
       success: false,
       error: `Patient with email not found`,
-      statusCode: 400
+      statusCode: HTTP_STATUS.BAD_REQUEST
     };
   }
 
@@ -47,7 +48,7 @@ export const createTestOrder = async (
     return {
       success: false,
       error: `Patient already has a pending test order. Please complete the existing order before creating a new one.`,
-      statusCode: 400
+      statusCode: HTTP_STATUS.BAD_REQUEST
     };
   }
 
@@ -67,7 +68,7 @@ export const createTestOrder = async (
       return {
         success: false,
         error: `Instrument with name not found`,
-        statusCode: 400
+        statusCode: HTTP_STATUS.BAD_REQUEST
       };
     }
     console.log('Resolved instrument by name:', { instrumentId: instrument._id });
@@ -106,7 +107,7 @@ export const createTestOrder = async (
       return {
         success: false,
         error: "Failed to create test order",
-        statusCode: 500
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
 
@@ -117,7 +118,7 @@ export const createTestOrder = async (
       return {
         success: false,
         error: "Failed to create test order: document not found after insert",
-        statusCode: 500
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
 
@@ -131,7 +132,7 @@ export const createTestOrder = async (
     return {
       success: false,
       error: "Failed to create test order",
-      statusCode: 500
+      statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
     };
   }
 };
@@ -187,6 +188,92 @@ export const getAllTestOrders = async (): Promise<any[]> => {
         $addFields: {
           patient_email: "$patient_info.email",
           patient_name: "$patient_info.full_name",
+          patient_dob: "$patient_info.date_of_birth",
+          patient_gender: "$patient_info.gender",
+          patient_phone: "$patient_info.phone_number",
+          created_by_name: "$created_by_user.full_name",
+          run_by_name: "$run_by_user.full_name"
+        }
+      },
+      {
+        $project: {
+          patient_info: 0,
+          created_by_user: 0,
+          run_by_user: 0
+        }
+      },
+      {
+        $sort: { created_at: -1 }  // Sort by most recent first (descending)
+      }
+    ])
+    .toArray();
+
+  return items;
+};
+
+/**
+ * Get test orders by patient ID
+ * Similar to getAllTestOrders but filtered by patient_id
+ */
+export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any[]> => {
+  const collection = getCollection<TestOrderDocument>(COLLECTION);
+
+  const patientObjectId = patientId instanceof ObjectId ? patientId : new ObjectId(String(patientId));
+
+  const items = await collection
+    .aggregate([
+      {
+        $match: {
+          patient_id: patientObjectId
+        }
+      },
+      {
+        $lookup: {
+          from: "patients",
+          localField: "patient_id",
+          foreignField: "_id",
+          as: "patient_info"
+        }
+      },
+      {
+        $unwind: {
+          path: "$patient_info",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "created_by",
+          foreignField: "_id",
+          as: "created_by_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$created_by_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "run_by",
+          foreignField: "_id",
+          as: "run_by_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$run_by_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          patient_email: "$patient_info.email",
+          patient_name: "$patient_info.full_name",
+          patient_dob: "$patient_info.date_of_birth",
           patient_gender: "$patient_info.gender",
           patient_phone: "$patient_info.phone_number",
           created_by_name: "$created_by_user.full_name",
@@ -255,14 +342,65 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
             preserveNullAndEmptyArrays: true
           }
         },
+        // Unwind comments to populate user info for each comment
+        { $unwind: { path: "$comments", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "users",
+            localField: "comments.created_by",
+            foreignField: "_id",
+            as: "comment_user"
+          }
+        },
+        {
+          $unwind: {
+            path: "$comment_user",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+        {
+          $addFields: {
+            "comments.created_by_name": "$comment_user.full_name"
+          }
+        },
+        {
+          $group: {
+            _id: "$_id",
+            order_number: { $first: "$order_number" },
+            patient_id: { $first: "$patient_id" },
+            instrument_id: { $first: "$instrument_id" },
+            barcode: { $first: "$barcode" },
+            status: { $first: "$status" },
+            test_results: { $first: "$test_results" },
+            comments: { $push: "$comments" },
+            run_by: { $first: "$run_by" },
+            run_at: { $first: "$run_at" },
+            created_at: { $first: "$created_at" },
+            created_by: { $first: "$created_by" },
+            updated_at: { $first: "$updated_at" },
+            updated_by: { $first: "$updated_by" },
+            patient_info: { $first: "$patient_info" },
+            created_by_user: { $first: "$created_by_user" },
+            run_by_user: { $first: "$run_by_user" }
+          }
+        },
         {
           $addFields: {
             patient_email: "$patient_info.email",
             patient_name: "$patient_info.full_name",
+            patient_dob: "$patient_info.date_of_birth",
             patient_gender: "$patient_info.gender",
             patient_phone: "$patient_info.phone_number",
             created_by_name: "$created_by_user.full_name",
-            run_by_name: "$run_by_user.full_name"
+            run_by_name: "$run_by_user.full_name",
+            // Filter out null comments (from unwind when comments array is empty)
+            comments: {
+              $filter: {
+                input: "$comments",
+                as: "comment",
+                cond: { $ne: ["$$comment", null] }
+              }
+            }
           }
         },
         {
@@ -284,7 +422,8 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
 
 export const updateTestOrder = async (
   id: string,
-  data: UpdateTestOrderWithPatientInput
+  data: UpdateTestOrderWithPatientInput,
+  updatedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
   const collection = getCollection<TestOrderDocument>(COLLECTION);
   const patientCollection = getCollection<any>(PATIENT_COLLECTION);
@@ -302,7 +441,7 @@ export const updateTestOrder = async (
     // Separate patient fields from test order fields
     const patientFields = ['full_name', 'date_of_birth', 'gender', 'phone_number', 'address'];
     const patientUpdateData: any = {};
-    const testOrderUpdateData: any = { updated_at: now };
+    const testOrderUpdateData: any = { updated_at: now, updated_by: updatedBy };
 
     Object.keys(data).forEach((key) => {
       if (patientFields.includes(key)) {
@@ -331,7 +470,7 @@ export const updateTestOrder = async (
             $set: { 
               ...patientUpdateData, 
               updated_at: now,
-              updated_by: testOrder.updated_by  // Keep the last updater for patient
+              updated_by: updatedBy
             } 
           },
           { session }
@@ -451,13 +590,28 @@ export const deleteComment = async (
   try {
     const _id = new ObjectId(orderId);
 
-    // Soft delete: set deleted_at field on specific comment
-    const updateField = `comments.${commentIndex}`;
+    // Get the current order to access comments array
+    const order = await collection.findOne({ _id });
+    if (!order) {
+      return null;
+    }
+
+    // Validate comment index
+    if (!order.comments || commentIndex < 0 || commentIndex >= order.comments.length) {
+      return null;
+    }
+
+    // Remove comment from array by index
+    // Create a new array without the comment at the specified index
+    const updatedComments = [...order.comments];
+    updatedComments.splice(commentIndex, 1);
+
+    // Update the order with the new comments array
     await collection.updateOne(
       { _id },
       { 
-        $set: { 
-          [`${updateField}.deleted_at`]: now,
+        $set: {
+          comments: updatedComments,
           updated_at: now,
           updated_by: deletedBy
         }
@@ -467,6 +621,7 @@ export const deleteComment = async (
     const updated = await collection.findOne({ _id });
     return updated as TestOrderDocument | null;
   } catch (err) {
+    console.error('Error deleting comment:', err);
     return null;
   }
 };
@@ -485,16 +640,17 @@ export const processSample = async (
 
   try {
     // 1. Check if test order exists with barcode
-    let existingOrder = await collection.findOne({ barcode });
-    let order: TestOrderDocument | undefined;
-    let isNew = false;
+    const existingOrder = await collection.findOne({ barcode });
     
-    if (existingOrder) {
-      order = existingOrder as TestOrderDocument;
-      isNew = false;
-    } else {
-    // 2. Check instrument mode = 'ready'
-    const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
+    if (!existingOrder) {
+      throw new Error(`Test order with barcode "${barcode}" not found`);
+    }
+    
+    let order = existingOrder as TestOrderDocument;
+    
+    // 2. Validate instrument exists and is ready BEFORE updating order
+    const newInstrumentId = new ObjectId(instrumentId);
+    const instrument = await instrumentCollection.findOne({ _id: newInstrumentId });
     if (!instrument) {
       throw new Error('Instrument not found');
     }
@@ -503,209 +659,116 @@ export const processSample = async (
       throw new Error(`Instrument is not ready (current mode: ${instrument.mode || 'not set'})`);
     }
 
-      // 3. Check reagent levels - validate all 5 required reagent types
+    // 3. Check reagent levels - validate all 5 required reagent types BEFORE updating order
     const reagents = await reagentCollection.find({
-      instrument_id: new ObjectId(instrumentId),
+      instrument_id: newInstrumentId,
       status: 'in_use'
     }).toArray();
 
-      // Validate that all 5 required reagent types are present and have sufficient quantity
-      const validationResult = validateRequiredReagents(reagents as any[]);
-      if (!validationResult.valid) {
-        throw new Error(getReagentValidationErrorMessage(validationResult));
+    // Validate that all 5 required reagent types are present and have sufficient quantity
+    const validationResult = validateRequiredReagents(reagents as any[]);
+    if (!validationResult.valid) {
+      throw new Error(getReagentValidationErrorMessage(validationResult));
     }
 
-    // 4. Auto-create test order and RawTestResult within transaction
-    // This ensures both operations succeed or fail together
-    const orderNumber = `ORD-${Date.now()}`;
-    
-    const newOrder: ITestOrder = {
-      order_number: orderNumber,
-      patient_id: new ObjectId('000000000000000000000000'), // Placeholder, needs to be matched later
-      instrument_id: new ObjectId(instrumentId),
-      barcode,
-      status: 'pending',
-      test_results: [],
-      comments: [],
-      run_by: undefined,
-      run_at: undefined,
-      created_at: now,
-      created_by: createdBy,
-      updated_at: now,
-      updated_by: createdBy
-    };
-
-    // Generate HL7 data before transaction (needs order data structure)
-    let hl7Message: string | null = null;
-    try {
-      const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
-      if (instrument) {
-        const parameterService = new ParameterService();
-        const parametersResult = await parameterService.findAll(1, 1000);
-        
-        if (parametersResult.success && parametersResult.data && parametersResult.data.parameters.length > 0) {
-          const parameters = parametersResult.data.parameters;
-          const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-          const patient = newOrder.patient_id ? await patientCollection.findOne({ _id: newOrder.patient_id }) : null;
-          const rawTestResults = generateRawTestResults(parameters, patient);
-          
-          if (rawTestResults.length > 0) {
-            // Create temporary order document for HL7 generation
-            const tempOrder: TestOrderDocument = {
-              ...newOrder,
-              _id: new ObjectId() // Temporary ID for HL7 generation
-            } as TestOrderDocument;
-            
-            hl7Message = await generateHL7Message({
-              testOrder: tempOrder,
-              patient: patient,
-              instrument: instrument,
-              rawTestResults: rawTestResults
-            });
-          }
+    // 4. Validate and update instrument_id consistency AFTER all validations pass
+    if (order.instrument_id) {
+      // Order already has instrument_id - check consistency
+      const existingInstrumentId = order.instrument_id instanceof ObjectId 
+        ? order.instrument_id 
+        : new ObjectId(String(order.instrument_id));
+      
+      if (!existingInstrumentId.equals(newInstrumentId)) {
+        throw new Error(`Test order is already assigned to instrument ${existingInstrumentId.toString()}. Cannot process with different instrument ${newInstrumentId.toString()}`);
+      }
+    } else {
+      // Order doesn't have instrument_id - assign it now (only after all validations pass)
+      await collection.updateOne(
+        { _id: order._id },
+        { 
+          $set: { 
+            instrument_id: newInstrumentId,
+            updated_at: now,
+            updated_by: createdBy
+          } 
         }
+      );
+    }
+    
+    // Reload order from DB to ensure we have the latest data (including updated_at, updated_by)
+    const updatedOrder = await collection.findOne({ _id: order._id });
+    if (!updatedOrder) {
+      throw new Error('Failed to retrieve updated test order');
+    }
+    order = updatedOrder as TestOrderDocument;
+
+    // 5. Generate raw test results and HL7 message (3.6.1.3)
+    try {
+      // Get all active parameters
+      const parameterService = new ParameterService();
+      const parametersResult = await parameterService.findAll(1, 1000); // Get all parameters
+      
+      if (!parametersResult.success) {
+        console.error('Failed to get parameters:', parametersResult.error);
+        return { order: order, isNew: false };
+      }
+
+      if (!parametersResult.data || parametersResult.data.parameters.length === 0) {
+        console.error('No active parameters found in database');
+        return { order: order, isNew: false };
+      }
+
+      const parameters = parametersResult.data.parameters;
+      
+      // Get patient for gender-specific ranges
+      const patientCollection = getCollection<any>(PATIENT_COLLECTION);
+      const patient = order.patient_id ? await patientCollection.findOne({ _id: order.patient_id }) : null;
+
+      // Generate raw test results
+      const rawTestResults = generateRawTestResults(parameters, patient);
+
+      if (rawTestResults.length === 0) {
+        console.error('No raw test results generated');
+        return { order: order, isNew: false };
+      }
+
+      // Generate HL7 message
+      const hl7Message = await generateHL7Message({
+        testOrder: order,
+        patient: patient,
+        instrument: instrument,
+        rawTestResults: rawTestResults
+      });
+
+      // Save to RawTestResult collection
+      const rawTestResultService = new RawTestResultService();
+      const createResult = await rawTestResultService.create({
+        test_order_id: order._id,
+        barcode: barcode,
+        instrument_id: newInstrumentId,
+        hl7_message: hl7Message,
+        status: 'pending',
+        sent_at: now,
+        can_delete: false,
+        created_by: createdBy
+      });
+
+      if (!createResult.success) {
+        console.error('Failed to create raw test result:', createResult.error);
       }
     } catch (hl7Error) {
-      // Log error but don't fail - we'll create order without RawTestResult
-      console.error('Error generating HL7 message before transaction:', hl7Error);
+      // Log error but don't fail the processSample operation
+      console.error('Error generating HL7 message in processSample:', hl7Error);
     }
 
-    // Execute within transaction: insert TestOrder + insert RawTestResult atomically
-    await withTransaction(async (session) => {
-      // Insert TestOrder
-      const result = await collection.insertOne(newOrder as TestOrderDocument, { session });
-      
-      if (!result.insertedId) {
-        throw new Error('Failed to create test order');
-      }
-
-      const inserted = await collection.findOne({ _id: result.insertedId }, { session });
-      if (!inserted) {
-        throw new Error('Failed to retrieve created test order');
-      }
-
-      order = inserted as TestOrderDocument;
-      isNew = true;
-
-      // Insert RawTestResult if HL7 message was generated
-      if (hl7Message) {
-        const rawTestResultCollection = getCollection<any>('raw_test_results');
-        await rawTestResultCollection.insertOne({
-          test_order_id: order._id,
-          barcode: barcode,
-          instrument_id: new ObjectId(instrumentId),
-          hl7_message: hl7Message,
-          status: 'pending',
-          sent_at: now,
-          can_delete: false,
-          created_at: now,
-          created_by: createdBy
-        }, { session });
-      }
-    });
-    }
-
-    // 5. Check instrument mode and reagents for existing orders too (before generating raw results)
-    if (!isNew) {
-      const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
-      if (!instrument) {
-        throw new Error('Instrument not found');
-      }
-
-      if (instrument.mode !== 'ready') {
-        throw new Error(`Instrument is not ready (current mode: ${instrument.mode || 'not set'})`);
-      }
-
-      // Validate all 5 required reagent types (same as new orders)
-      const reagents = await reagentCollection.find({
-        instrument_id: new ObjectId(instrumentId),
-        status: 'in_use'
-      }).toArray();
-
-      // Validate that all 5 required reagent types are present and have sufficient quantity
-      const validationResult = validateRequiredReagents(reagents as any[]);
-      if (!validationResult.valid) {
-        throw new Error(getReagentValidationErrorMessage(validationResult));
-      }
-    }
-
-    // 6. Generate raw test results and HL7 message (3.6.1.3) - For existing orders only
-    // New orders already have RawTestResult created in transaction above
-    if (!isNew && order) {
-      try {
-        // Get instrument for HL7 generation
-        const instrument = await instrumentCollection.findOne({ _id: new ObjectId(instrumentId) });
-        if (!instrument) {
-          console.error('Instrument not found for HL7 generation:', instrumentId);
-          return { order: order, isNew: isNew };
-        }
-        
-        // Get all active parameters
-        const parameterService = new ParameterService();
-        const parametersResult = await parameterService.findAll(1, 1000); // Get all parameters
-        
-        if (!parametersResult.success) {
-          console.error('Failed to get parameters:', parametersResult.error);
-          return { order: order, isNew: isNew };
-        }
-
-        if (!parametersResult.data || parametersResult.data.parameters.length === 0) {
-          console.error('No active parameters found in database');
-          return { order: order, isNew: isNew };
-        }
-
-        const parameters = parametersResult.data.parameters;
-        
-        // Get patient for gender-specific ranges
-        const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-        const patient = order.patient_id ? await patientCollection.findOne({ _id: order.patient_id }) : null;
-
-        // Generate raw test results
-        const rawTestResults = generateRawTestResults(parameters, patient);
-
-        if (rawTestResults.length === 0) {
-          console.error('No raw test results generated');
-          return { order: order, isNew: isNew };
-        }
-
-        // Generate HL7 message
-        const hl7Message = await generateHL7Message({
-          testOrder: order,
-          patient: patient,
-          instrument: instrument,
-          rawTestResults: rawTestResults
-        });
-
-        // Save to RawTestResult collection
-        const rawTestResultService = new RawTestResultService();
-        const createResult = await rawTestResultService.create({
-          test_order_id: order._id,
-          barcode: barcode,
-          instrument_id: new ObjectId(instrumentId),
-          hl7_message: hl7Message,
-          status: 'pending',
-          sent_at: now,
-          can_delete: false,
-          created_by: createdBy
-        });
-
-        if (!createResult.success) {
-          console.error('Failed to create raw test result:', createResult.error);
-        }
-      } catch (hl7Error) {
-        // Log error but don't fail the processSample operation
-        console.error('Error generating HL7 message in processSample:', hl7Error);
-      }
-    }
-
-    // Ensure order is defined before returning
-    if (!order) {
-      throw new Error('Failed to create or retrieve test order');
-    }
-
-    return { order: order, isNew: isNew };
+    return { order: order, isNew: false };
   } catch (err) {
     console.error('Error in processSample:', err);
+    // Re-throw validation errors so controller can handle with appropriate status code
+    // Only return null for unexpected errors
+    if (err instanceof Error) {
+      throw err;
+    }
     return null;
   }
 };
@@ -838,39 +901,78 @@ export const completeTestOrder = async (
 
     // Pre-validate and prepare reagent usage data (outside transaction)
     let reagentLookupMap: Map<string, any> = new Map();
-    if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-      // Ensure instrument_id is ObjectId for consistent querying
-      const instrumentObjectId = toObjectId(order.instrument_id);
-      if (!instrumentObjectId) {
-        throw new Error('Invalid instrument ID in test order');
-      }
+    
+    // Ensure instrument_id is ObjectId for consistent querying
+    if (!order.instrument_id) {
+      throw new Error('Test order must have an instrument_id to complete');
+    }
+    
+    const instrumentObjectId = toObjectId(order.instrument_id);
+    if (!instrumentObjectId) {
+      throw new Error('Invalid instrument ID in test order');
+    }
 
-      // Extract all reagent_lot_numbers for batch query
-      const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
-      
-      // Batch query all reagents at once (outside transaction for validation)
+    // If reagentUsage not provided, auto-select reagents for each required type
+    if (!reagentUsage || reagentUsage.length === 0) {
+      // Get all active reagents for this instrument
       const reagents = await reagentCollection.find({
-        reagent_lot_number: { $in: reagentLotNumbers },
         instrument_id: instrumentObjectId,
-        status: 'in_use'
+        status: 'in_use',
+        reagent_name: { $in: REQUIRED_REAGENT_NAMES }
       }).toArray();
 
-      // Create lookup map for O(1) access
+      // Create map by reagent_name (should only have one per type)
+      const reagentMap = new Map<string, any>();
       reagents.forEach(reagent => {
-        reagentLookupMap.set(reagent.reagent_lot_number, reagent);
+        const name = reagent.reagent_name;
+        if (!reagentMap.has(name)) {
+          reagentMap.set(name, reagent);
+        }
       });
 
-      // Validate all reagents exist before entering transaction
-      const missingReagents: string[] = [];
-      for (const usage of reagentUsage) {
-        if (!reagentLookupMap.has(usage.reagent_lot_number)) {
-          missingReagents.push(usage.reagent_lot_number);
+      // Auto-generate reagentUsage array
+      reagentUsage = [];
+      for (const requiredName of REQUIRED_REAGENT_NAMES) {
+        const reagent = reagentMap.get(requiredName);
+        if (!reagent) {
+          throw new Error(`Required reagent "${requiredName}" is not installed on this instrument`);
         }
+        
+        // Use usage_per_run_max if available, otherwise use usage_per_run_min, otherwise default to 1
+        const quantityUsed = reagent.usage_per_run_max || reagent.usage_per_run_min || 1;
+        
+        reagentUsage.push({
+          reagent_lot_number: reagent.reagent_lot_number,
+          quantity_used: quantityUsed
+        });
       }
+    }
 
-      if (missingReagents.length > 0) {
-        throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
+    // Extract all reagent_lot_numbers for batch query
+    const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
+    
+    // Batch query all reagents at once (outside transaction for validation)
+    const reagents = await reagentCollection.find({
+      reagent_lot_number: { $in: reagentLotNumbers },
+      instrument_id: instrumentObjectId,
+      status: 'in_use'
+    }).toArray();
+
+    // Create lookup map for O(1) access
+    reagents.forEach(reagent => {
+      reagentLookupMap.set(reagent.reagent_lot_number, reagent);
+    });
+
+    // Validate all reagents exist before entering transaction
+    const missingReagents: string[] = [];
+    for (const usage of reagentUsage) {
+      if (!reagentLookupMap.has(usage.reagent_lot_number)) {
+        missingReagents.push(usage.reagent_lot_number);
       }
+    }
+
+    if (missingReagents.length > 0) {
+      throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
     }
 
     // Execute within transaction: update TestOrder status + update InstrumentReagent quantity + insert ReagentUsageHistory
@@ -891,14 +993,8 @@ export const completeTestOrder = async (
         { session }
       );
 
-      // Track reagent usage if provided
-      if (reagentUsage && reagentUsage.length > 0 && order.instrument_id) {
-        // Ensure instrument_id is ObjectId (consistent with pre-validation)
-        const instrumentObjectId = toObjectId(order.instrument_id);
-        if (!instrumentObjectId) {
-          throw new Error('Invalid instrument ID in test order');
-        }
-
+      // Track reagent usage
+      if (reagentUsage && reagentUsage.length > 0) {
         for (const usage of reagentUsage) {
           // Get reagent from pre-validated lookup map
           const reagent = reagentLookupMap.get(usage.reagent_lot_number);

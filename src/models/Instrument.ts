@@ -12,6 +12,10 @@ export interface IInstrument {
   configuration_id?: ObjectId; // Optional reference to a saved Configuration
   is_active: boolean;
   deactivated_at?: Date;
+  mode: 'ready' | 'maintenance' | 'inactive'; // Operational mode
+  mode_reason?: string; // Reason for maintenance/inactive mode
+  last_qc_check?: Date; // Last quality control check timestamp
+  deactivated_at?: Date; // Set when mode='inactive', cleared when mode='ready'
   auto_delete_scheduled_at?: Date;
   created_at: Date;
   created_by: ObjectId;

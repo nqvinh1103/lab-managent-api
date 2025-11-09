@@ -1,5 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { ReagentDocument, UpdateReagentMetadataInput } from '../models/Reagent';
 import { createSortOptions, QueryResult, toObjectId } from '../utils/database.helper';
@@ -25,7 +26,8 @@ export class ReagentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -36,7 +38,8 @@ export class ReagentService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid reagent ID'
+          error: 'Invalid reagent ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -45,7 +48,8 @@ export class ReagentService {
       if (!reagent) {
         return {
           success: false,
-          error: 'Reagent not found'
+          error: 'Reagent not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -56,7 +60,8 @@ export class ReagentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -71,7 +76,8 @@ export class ReagentService {
       if (!reagent) {
         return {
           success: false,
-          error: 'Reagent not found'
+          error: 'Reagent not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -82,7 +88,8 @@ export class ReagentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -183,7 +190,8 @@ export class ReagentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

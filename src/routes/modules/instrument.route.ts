@@ -1,9 +1,7 @@
 import { Router } from 'express';
 import {
-  activateInstrument,
   changeModeInstrument,
   createInstrument,
-  deactivateInstrument,
   deleteInstrument,
   getAllInstruments,
   getInstrumentById,
@@ -13,6 +11,7 @@ import { authMiddleware, checkPrivilege } from '../../middlewares/auth.middlewar
 import { PRIVILEGES } from '../../constants/privileges';
 import { validationMiddleware } from '../../middlewares/validation.middleware';
 import {
+  changeModeValidation,
   createInstrumentValidation,
   instrumentIdValidation,
   listInstrumentsValidation,
@@ -71,32 +70,12 @@ router.delete(
   deleteInstrument
 );
 
-// Activate instrument
-router.post(
-  '/:id/activate',
-  authMiddleware,
-  checkPrivilege([PRIVILEGES.ACTIVATE_DEACTIVATE_INSTRUMENT]),
-  instrumentIdValidation,
-  validationMiddleware,
-  activateInstrument
-);
-
-// Deactivate instrument
-router.post(
-  '/:id/deactivate',
-  authMiddleware,
-  checkPrivilege([PRIVILEGES.ACTIVATE_DEACTIVATE_INSTRUMENT]),
-  instrumentIdValidation,
-  validationMiddleware,
-  deactivateInstrument
-);
-
-// Change instrument mode (3.6.1.1)
+// Change instrument mode
 router.post(
   '/:id/change-mode',
   authMiddleware,
   checkPrivilege([PRIVILEGES.ACTIVATE_DEACTIVATE_INSTRUMENT]),
-  instrumentIdValidation,
+  changeModeValidation,
   validationMiddleware,
   changeModeInstrument
 );

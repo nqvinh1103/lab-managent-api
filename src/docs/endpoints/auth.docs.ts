@@ -113,6 +113,191 @@
 
 /**
  * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get current user's profile
+ *     description: |
+ *       Get the authenticated user's profile information.
+ *       - Returns user info with roles and privileges
+ *       - If user is a patient, also returns patient profile information
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                           example: "507f1f77bcf86cd799439011"
+ *                         email:
+ *                           type: string
+ *                           example: "user@example.com"
+ *                         full_name:
+ *                           type: string
+ *                           example: "John Doe"
+ *                         phone_number:
+ *                           type: string
+ *                           example: "1234567890"
+ *                         identity_number:
+ *                           type: string
+ *                           example: "ID-20240101-00001"
+ *                         gender:
+ *                           type: string
+ *                           enum: [male, female]
+ *                           example: "male"
+ *                         address:
+ *                           type: string
+ *                           example: "123 Main St"
+ *                         date_of_birth:
+ *                           type: string
+ *                           format: date-time
+ *                           example: "1990-01-01T00:00:00.000Z"
+ *                         roles:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["NORMAL_USER"]
+ *                         privileges:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["VIEW_INSTRUMENT"]
+ *                     patient:
+ *                       type: object
+ *                       nullable: true
+ *                       description: Patient profile (only present if user is a patient)
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                           example: "507f1f77bcf86cd799439012"
+ *                         full_name:
+ *                           type: string
+ *                           example: "Jane Patient"
+ *                         identity_number:
+ *                           type: string
+ *                           example: "ID-20240101-00002"
+ *                         date_of_birth:
+ *                           type: string
+ *                           format: date-time
+ *                           example: "1985-05-15T00:00:00.000Z"
+ *                         gender:
+ *                           type: string
+ *                           enum: [male, female]
+ *                           example: "female"
+ *                         address:
+ *                           type: string
+ *                           example: "456 Oak Ave"
+ *                         phone_number:
+ *                           type: string
+ *                           example: "0987654321"
+ *                         email:
+ *                           type: string
+ *                           example: "patient@example.com"
+ *             examples:
+ *               regular_user:
+ *                 summary: Regular user profile
+ *                 value:
+ *                   success: true
+ *                   message: Success
+ *                   data:
+ *                     user:
+ *                       id: "507f1f77bcf86cd799439011"
+ *                       email: "user@example.com"
+ *                       full_name: "John Doe"
+ *                       phone_number: "1234567890"
+ *                       identity_number: "ID-20240101-00001"
+ *                       gender: "male"
+ *                       address: "123 Main St"
+ *                       date_of_birth: "1990-01-01T00:00:00.000Z"
+ *                       roles: ["NORMAL_USER"]
+ *                       privileges: ["VIEW_INSTRUMENT"]
+ *               patient_user:
+ *                 summary: Patient user profile
+ *                 value:
+ *                   success: true
+ *                   message: Success
+ *                   data:
+ *                     user:
+ *                       id: "507f1f77bcf86cd799439011"
+ *                       email: "patient@example.com"
+ *                       full_name: "Jane Patient"
+ *                       phone_number: "0987654321"
+ *                       identity_number: "ID-20240101-00002"
+ *                       gender: "female"
+ *                       address: "456 Oak Ave"
+ *                       date_of_birth: "1985-05-15T00:00:00.000Z"
+ *                       roles: ["NORMAL_USER"]
+ *                       privileges: []
+ *                     patient:
+ *                       _id: "507f1f77bcf86cd799439012"
+ *                       full_name: "Jane Patient"
+ *                       identity_number: "ID-20240101-00002"
+ *                       date_of_birth: "1985-05-15T00:00:00.000Z"
+ *                       gender: "female"
+ *                       address: "456 Oak Ave"
+ *                       phone_number: "0987654321"
+ *                       email: "patient@example.com"
+ *       401:
+ *         description: Unauthorized - Missing or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: Unauthorized
+ *               error: "User not authenticated"
+ *       403:
+ *         description: Forbidden - Account is locked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: User account is locked
+ *               error: "User account is locked"
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: User not found
+ *               error: "User not found"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: Internal server error
+ *               error: "Failed to get profile"
+ */
+
+/**
+ * @swagger
  * /auth/logout:
  *   post:
  *     summary: User logout

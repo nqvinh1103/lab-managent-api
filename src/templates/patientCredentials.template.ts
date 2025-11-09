@@ -192,7 +192,7 @@ export const getPatientCredentialsEmailTemplate = (
             </div>
   
             <div class="button-container">
-              <a href="${process.env.PATIENT_PORTAL_URL || 'http://localhost:3000/login'}" class="button">
+              <a href="${process.env.PATIENT_PORTAL_URL || 'http://localhost:5173/login'}" class="button">
                 Đăng nhập ngay →
               </a>
             </div>

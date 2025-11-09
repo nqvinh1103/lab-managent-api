@@ -1,5 +1,6 @@
 import { ClientSession, ObjectId, Sort } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import {
     CreateReagentInventoryInput,
@@ -58,7 +59,8 @@ export class ReagentInventoryService {
       if (!userObjectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -67,7 +69,8 @@ export class ReagentInventoryService {
       if (!reagentId) {
         return {
           success: false,
-          error: 'Invalid reagent ID format'
+          error: 'Invalid reagent ID format',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -76,7 +79,8 @@ export class ReagentInventoryService {
       if (!reagent) {
         return {
           success: false,
-          error: 'Reagent not found'
+          error: 'Reagent not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -85,7 +89,8 @@ export class ReagentInventoryService {
       if (duplicateCheck.isDuplicate) {
         return {
           success: false,
-          error: `Duplicate lot number "${data.lot_number}" already exists for this reagent`
+          error: `Duplicate lot number "${data.lot_number}" already exists for this reagent`,
+          statusCode: HTTP_STATUS.CONFLICT
         };
       }
 
@@ -93,7 +98,8 @@ export class ReagentInventoryService {
       if (data.expiration_date <= new Date()) {
         return {
           success: false,
-          error: 'Expiration date must be set to a future date'
+          error: 'Expiration date must be set to a future date',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -101,7 +107,8 @@ export class ReagentInventoryService {
       if (data.quantity_received <= 0) {
         return {
           success: false,
-          error: 'Quantity received must be greater than zero'
+          error: 'Quantity received must be greater than zero',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -119,7 +126,8 @@ export class ReagentInventoryService {
       if (status === 'Returned' && !data.returned_reason) {
         return {
           success: false,
-          error: 'returned_reason is required when status is "Returned"'
+          error: 'returned_reason is required when status is "Returned"',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -138,7 +146,8 @@ export class ReagentInventoryService {
       if (quantity_in_stock > data.quantity_received) {
         return {
           success: false,
-          error: 'Quantity in stock cannot exceed quantity received'
+          error: 'Quantity in stock cannot exceed quantity received',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -166,12 +175,14 @@ export class ReagentInventoryService {
 
       return {
         success: false,
-        error: 'Failed to create reagent inventory'
+        error: 'Failed to create reagent inventory',
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -182,7 +193,8 @@ export class ReagentInventoryService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid inventory ID'
+          error: 'Invalid inventory ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -191,7 +203,8 @@ export class ReagentInventoryService {
       if (!inventory) {
         return {
           success: false,
-          error: 'Reagent inventory not found'
+          error: 'Reagent inventory not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -202,7 +215,8 @@ export class ReagentInventoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -299,7 +313,8 @@ export class ReagentInventoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -313,7 +328,8 @@ export class ReagentInventoryService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid inventory ID'
+          error: 'Invalid inventory ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -322,7 +338,8 @@ export class ReagentInventoryService {
       if (!inventory) {
         return {
           success: false,
-          error: 'Reagent inventory not found'
+          error: 'Reagent inventory not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -330,7 +347,8 @@ export class ReagentInventoryService {
       if (stockData.quantity_in_stock > inventory.quantity_received) {
         return {
           success: false,
-          error: 'Quantity in stock cannot exceed quantity received'
+          error: 'Quantity in stock cannot exceed quantity received',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -338,7 +356,8 @@ export class ReagentInventoryService {
       if (stockData.quantity_in_stock < 0) {
         return {
           success: false,
-          error: 'Quantity in stock cannot be negative'
+          error: 'Quantity in stock cannot be negative',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -356,7 +375,8 @@ export class ReagentInventoryService {
       if (!result) {
         return {
           success: false,
-          error: 'Failed to update inventory stock'
+          error: 'Failed to update inventory stock',
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
         };
       }
 
@@ -367,7 +387,8 @@ export class ReagentInventoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -381,7 +402,8 @@ export class ReagentInventoryService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid inventory ID'
+          error: 'Invalid inventory ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -389,7 +411,8 @@ export class ReagentInventoryService {
       if (statusData.status === 'Returned' && !statusData.returned_reason) {
         return {
           success: false,
-          error: 'returned_reason is required when status is "Returned"'
+          error: 'returned_reason is required when status is "Returned"',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -431,7 +454,8 @@ export class ReagentInventoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -445,7 +469,8 @@ export class ReagentInventoryService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid inventory ID'
+          error: 'Invalid inventory ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -454,7 +479,8 @@ export class ReagentInventoryService {
       if (!inventory) {
         return {
           success: false,
-          error: 'Reagent inventory not found'
+          error: 'Reagent inventory not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -469,7 +495,8 @@ export class ReagentInventoryService {
         if (duplicateCheck.isDuplicate) {
           return {
             success: false,
-            error: `Duplicate lot number "${updateData.lot_number}" already exists for this reagent`
+            error: `Duplicate lot number "${updateData.lot_number}" already exists for this reagent`,
+            statusCode: HTTP_STATUS.CONFLICT
           };
         }
       }
@@ -478,7 +505,8 @@ export class ReagentInventoryService {
       if (updateData.expiration_date && updateData.expiration_date <= new Date()) {
         return {
           success: false,
-          error: 'Expiration date must be set to a future date'
+          error: 'Expiration date must be set to a future date',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -486,7 +514,8 @@ export class ReagentInventoryService {
       if (updateData.quantity_received !== undefined && updateData.quantity_received <= 0) {
         return {
           success: false,
-          error: 'Quantity received must be greater than zero'
+          error: 'Quantity received must be greater than zero',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -494,7 +523,8 @@ export class ReagentInventoryService {
       if (updateData.status === 'Returned' && !updateData.returned_reason) {
         return {
           success: false,
-          error: 'returned_reason is required when status is "Returned"'
+          error: 'returned_reason is required when status is "Returned"',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -570,7 +600,8 @@ export class ReagentInventoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -584,7 +615,8 @@ export class ReagentInventoryService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid inventory ID'
+          error: 'Invalid inventory ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -593,7 +625,8 @@ export class ReagentInventoryService {
       if (!inventory) {
         return {
           success: false,
-          error: 'Reagent inventory not found'
+          error: 'Reagent inventory not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -601,7 +634,8 @@ export class ReagentInventoryService {
       if (inventory.status === 'Returned') {
         return {
           success: false,
-          error: 'Cannot install reagent with status "Returned"'
+          error: 'Cannot install reagent with status "Returned"',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -609,7 +643,8 @@ export class ReagentInventoryService {
       if (inventory.quantity_in_stock < quantity) {
         return {
           success: false,
-          error: `Insufficient stock. Available: ${inventory.quantity_in_stock}, Requested: ${quantity}`
+          error: `Insufficient stock. Available: ${inventory.quantity_in_stock}, Requested: ${quantity}`,
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -620,7 +655,8 @@ export class ReagentInventoryService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }

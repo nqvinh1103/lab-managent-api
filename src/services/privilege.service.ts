@@ -1,4 +1,5 @@
 import { getCollection } from "~/config/database";
+import { HTTP_STATUS } from "~/constants/httpStatus";
 import { PrivilegeDocument } from "~/models/Privilege";
 import { QueryResult, toObjectId } from "~/utils/database.helper";
 
@@ -15,7 +16,8 @@ export class PrivilegeService {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : 'Unknown error occurred'
+                error: error instanceof Error ? error.message : 'Unknown error occurred',
+                statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
             };
         }
     }
@@ -26,7 +28,8 @@ export class PrivilegeService {
             if (!objectId) {
                 return {
                     success: false,
-                    error: 'Invalid privilege ID'
+                    error: 'Invalid privilege ID',
+                    statusCode: HTTP_STATUS.BAD_REQUEST
                 };
             }
 
@@ -34,7 +37,8 @@ export class PrivilegeService {
             if (!privilege) {
                 return {
                     success: false,
-                    error: 'Privilege not found'
+                    error: 'Privilege not found',
+                    statusCode: HTTP_STATUS.NOT_FOUND
                 };
             }
             return {
@@ -44,7 +48,8 @@ export class PrivilegeService {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : 'Unknown error occurred'
+                error: error instanceof Error ? error.message : 'Unknown error occurred',
+                statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
             };
         }
     }

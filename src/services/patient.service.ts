@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
+import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { CreatePatientInput, PatientDocument, UpdatePatientInput } from '../models/Patient';
 import { RoleDocument } from '../models/Role';
@@ -40,7 +41,8 @@ export class PatientService {
       if (!patientData.email) {
         return {
           success: false,
-          error: 'Email is required for patient portal access'
+          error: 'Email is required for patient portal access',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -52,7 +54,8 @@ export class PatientService {
       if (existingUser) {
         return {
           success: false,
-          error: 'Email already exists'
+          error: 'Email already exists',
+          statusCode: HTTP_STATUS.CONFLICT
         };
       }
 
@@ -65,7 +68,8 @@ export class PatientService {
       if (existingPatient) {
         return {
           success: false,
-          error: 'Patient with this email already exists'
+          error: 'Patient with this email already exists',
+          statusCode: HTTP_STATUS.CONFLICT
         };
       }
 
@@ -77,7 +81,8 @@ export class PatientService {
       if (!normalUserRole) {
         return {
           success: false,
-          error: 'NORMAL_USER role not found in database'
+          error: 'NORMAL_USER role not found in database',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -162,7 +167,8 @@ export class PatientService {
       if (!createdPatient || !userId) {
         return {
           success: false,
-          error: 'Failed to create patient'
+          error: 'Failed to create patient',
+          statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
         };
       }
 
@@ -188,7 +194,8 @@ export class PatientService {
       console.error('Error creating patient:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_SAVE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -202,7 +209,8 @@ export class PatientService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid patient ID'
+          error: 'Invalid patient ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -214,7 +222,8 @@ export class PatientService {
       if (!patient) {
         return {
           success: false,
-          error: 'Patient not found'
+          error: 'Patient not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -225,7 +234,8 @@ export class PatientService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -239,7 +249,8 @@ export class PatientService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid user ID'
+          error: 'Invalid user ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -251,7 +262,8 @@ export class PatientService {
       if (!patient) {
         return {
           success: false,
-          error: 'Patient not found'
+          error: 'Patient not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -262,7 +274,8 @@ export class PatientService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -276,7 +289,8 @@ export class PatientService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid patient ID'
+          error: 'Invalid patient ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -297,7 +311,8 @@ export class PatientService {
       if (result.matchedCount === 0) {
         return {
           success: false,
-          error: 'Patient not found'
+          error: 'Patient not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -310,7 +325,8 @@ export class PatientService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_UPDATE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -324,7 +340,8 @@ export class PatientService {
       if (!objectId) {
         return {
           success: false,
-          error: 'Invalid patient ID'
+          error: 'Invalid patient ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
         };
       }
 
@@ -336,7 +353,8 @@ export class PatientService {
       if (!patient) {
         return {
           success: false,
-          error: 'Patient not found'
+          error: 'Patient not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
         };
       }
 
@@ -373,7 +391,8 @@ export class PatientService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_DELETE_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
@@ -429,7 +448,8 @@ export class PatientService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
       };
     }
   }
