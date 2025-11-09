@@ -13,6 +13,15 @@ export const createInstrumentValidation = [
     .notEmpty().withMessage('Serial number is required')
     .trim()
     .isLength({ min: 1 }).withMessage('Serial number is required'),
+  body('status')
+    .notEmpty().withMessage('Status is required')
+    .isIn(['active', 'inactive', 'maintenance', 'decommissioned']).withMessage('Status must be one of: active, inactive, maintenance, decommissioned'),
+  body('is_active')
+    .notEmpty().withMessage('is_active is required')
+    .isBoolean().withMessage('is_active must be a boolean'),
+  body('configuration_id')
+    .optional()
+    .isMongoId().withMessage('configuration_id must be a valid MongoId'),
   body('mode')
     .notEmpty().withMessage('Mode is required')
     .isIn(['ready', 'maintenance', 'inactive']).withMessage('Mode must be one of: ready, maintenance, inactive'),
@@ -52,6 +61,10 @@ export const updateInstrumentValidation = [
     .isIn(['ready', 'maintenance', 'inactive']).withMessage('Mode must be one of: ready, maintenance, inactive'),
   body('mode_reason')
     .optional()
+    .isBoolean().withMessage('is_active must be a boolean'),
+  body('configuration_id')
+    .optional()
+    .isMongoId().withMessage('configuration_id must be a valid MongoId'),
     .trim()
     .isLength({ min: 1 }).withMessage('Mode reason cannot be empty if provided'),
   body('last_qc_check')

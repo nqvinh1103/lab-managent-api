@@ -5,6 +5,13 @@ export interface IInstrument {
   instrument_name: string;
   instrument_type: string;
   serial_number: string;
+  status: 'active' | 'inactive' | 'maintenance' | 'decommissioned';
+  mode?: 'ready' | 'maintenance' | 'inactive'; // NEW: Operational mode (3.6.1.1)
+  mode_reason?: string; // NEW: Reason for maintenance/inactive mode
+  last_qc_check?: Date; // NEW: Last quality control check timestamp
+  configuration_id?: ObjectId; // Optional reference to a saved Configuration
+  is_active: boolean;
+  deactivated_at?: Date;
   mode: 'ready' | 'maintenance' | 'inactive'; // Operational mode
   mode_reason?: string; // Reason for maintenance/inactive mode
   last_qc_check?: Date; // Last quality control check timestamp

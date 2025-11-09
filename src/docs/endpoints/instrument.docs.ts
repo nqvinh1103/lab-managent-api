@@ -22,6 +22,7 @@
  *                 serial_number: "SN-2024-001"
  *                 mode: "ready"
  *                 last_qc_check: "2024-01-15T10:00:00.000Z"
+ *                 configuration_id: "507f1f77bcf86cd799439099"
  *             withReagents:
  *               summary: Create instrument with reagents (Use Case 2)
  *               description: Install reagents during instrument creation
@@ -31,6 +32,7 @@
  *                 serial_number: "SN-2024-001"
  *                 mode: "ready"
  *                 last_qc_check: "2024-01-15T10:00:00.000Z"
+ *                 configuration_id: "507f1f77bcf86cd799439099"
  *                 reagents:
  *                   - reagent_inventory_id: "507f1f77bcf86cd799439014"
  *                     quantity: 1000

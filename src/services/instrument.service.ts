@@ -7,6 +7,7 @@ import {
   InstrumentDocument,
   UpdateInstrumentInput
 } from '../models/Instrument';
+import { ConfigurationDocument } from '../models/Configuration';
 import { InstrumentReagentDocument } from '../models/InstrumentReagent';
 import { TestOrderDocument } from '../models/TestOrder';
 import { createPaginationOptions, createTextSearchFilter, QueryResult, toObjectId } from '../utils/database.helper';
@@ -41,8 +42,30 @@ export class InstrumentService {
         };
       }
 
+      // If configuration_id is provided, validate it and normalize to ObjectId
+      let configurationObjectId: ObjectId | null = null;
+      if ((instrumentData as any).configuration_id) {
+        configurationObjectId = toObjectId((instrumentData as any).configuration_id);
+        if (configurationObjectId === null) {
+          return { success: false, error: 'Invalid configuration ID' };
+        }
+
+        // Validate configuration exists
+        const configCollection = getCollection<ConfigurationDocument>('configurations');
+        const config = await configCollection.findOne({ _id: configurationObjectId });
+        if (!config) {
+          return { success: false, error: 'Configuration not found' };
+        }
+
+        // Optional: ensure configuration.instrument_type matches instrument type if set
+        if (config.instrument_type && config.instrument_type !== instrumentData.instrument_type) {
+          return { success: false, error: 'Configuration is not valid for this instrument type' };
+        }
+      }
+
       const instrumentToInsert: Omit<InstrumentDocument, '_id'> = {
         ...instrumentData,
+        configuration_id: configurationObjectId as any,
         created_by: userObjectId,
         updated_by: userObjectId,
         created_at: new Date(),
@@ -208,6 +231,26 @@ export class InstrumentService {
             statusCode: HTTP_STATUS.CONFLICT
           };
         }
+      }
+      // If configuration_id is being updated, validate it
+      if ('configuration_id' in updateData && updateData.configuration_id !== undefined) {
+        const configObjectId = toObjectId((updateData as any).configuration_id);
+        if (!configObjectId) {
+          return { success: false, error: 'Invalid configuration ID' };
+        }
+
+        const configCollection = getCollection<ConfigurationDocument>('configurations');
+        const config = await configCollection.findOne({ _id: configObjectId });
+        if (!config) {
+          return { success: false, error: 'Configuration not found' };
+        }
+
+        // Ensure configuration.instrument_type matches (if set on config)
+        if (config.instrument_type && updateData.instrument_type && config.instrument_type !== updateData.instrument_type) {
+          return { success: false, error: 'Configuration is not valid for this instrument type' };
+        }
+
+        updateData.configuration_id = configObjectId as any;
       }
 
       // Filter out deprecated fields (status, is_active) if present
