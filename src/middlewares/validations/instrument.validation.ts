@@ -13,12 +13,6 @@ export const createInstrumentValidation = [
     .notEmpty().withMessage('Serial number is required')
     .trim()
     .isLength({ min: 1 }).withMessage('Serial number is required'),
-  body('status')
-    .notEmpty().withMessage('Status is required')
-    .isIn(['active', 'inactive', 'maintenance', 'decommissioned']).withMessage('Status must be one of: active, inactive, maintenance, decommissioned'),
-  body('is_active')
-    .notEmpty().withMessage('is_active is required')
-    .isBoolean().withMessage('is_active must be a boolean'),
   body('configuration_id')
     .optional()
     .isMongoId().withMessage('configuration_id must be a valid MongoId'),
