@@ -21,6 +21,10 @@ import {
   printToPDF,
   syncRawTestResult
 } from '../services/testOrder.service';
+import {
+  reviewTestOrder,
+  aiReviewTestOrder
+} from '../services/testOrderReview.service';
 import { PatientService } from '../services/patient.service';
 import { logEvent } from '../utils/eventLog.helper';
 import { ApiError } from '../utils/apiError';
@@ -898,6 +902,145 @@ export const syncRawTestResultController = async (req: AuthenticatedRequest, res
     }
   } catch (error) {
     console.error('Error in syncRawTestResultController (outer):', error);
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+};
+
+// Review test order (3.5.2.3)
+export const reviewOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
+      return;
+    }
+
+    const { adjustments, comment } = req.body;
+
+    try {
+      const updated = await reviewTestOrder(
+        id,
+        new ObjectId(req.user.id),
+        adjustments,
+        comment
+      );
+
+      if (!updated) {
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Failed to review test order');
+        return;
+      }
+
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
+    } catch (err) {
+      console.error('Error in reviewOrder:', err);
+      if (err instanceof Error) {
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message);
+        return;
+      }
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  } catch (error) {
+    console.error('Error in reviewOrder (outer):', error);
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+};
+
+// AI preview test order (GET) - Only analyzes, does not apply
+export const aiPreviewOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
+      return;
+    }
+
+    try {
+      const { aiPreviewTestOrder } = await import('../services/testOrderReview.service');
+      const result = await aiPreviewTestOrder(id);
+
+      sendSuccessResponse(res, HTTP_STATUS.OK, 'AI preview completed successfully', result);
+    } catch (err) {
+      console.error('Error in aiPreviewOrder:', err);
+      if (err instanceof Error) {
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message);
+        return;
+      }
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  } catch (error) {
+    console.error('Error in aiPreviewOrder (outer):', error);
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+};
+
+// AI review test order (3.5.2.4) - Legacy endpoint (only analyzes, does not apply)
+export const aiReviewOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
+      return;
+    }
+
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
+      return;
+    }
+
+    try {
+      const result = await aiReviewTestOrder(id, new ObjectId(req.user.id));
+
+      sendSuccessResponse(res, HTTP_STATUS.OK, 'AI review completed successfully', result);
+    } catch (err) {
+      console.error('Error in aiReviewOrder:', err);
+      if (err instanceof Error) {
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message);
+        return;
+      }
+      sendErrorResponse(
+        res,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        MESSAGES.INTERNAL_ERROR,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  } catch (error) {
+    console.error('Error in aiReviewOrder (outer):', error);
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,

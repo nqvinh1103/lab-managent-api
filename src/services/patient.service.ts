@@ -4,6 +4,7 @@ import { getCollection } from '../config/database';
 import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { CreatePatientInput, PatientDocument, UpdatePatientInput } from '../models/Patient';
+import { TestOrderDocument } from '../models/TestOrder';
 import { RoleDocument } from '../models/Role';
 import { CreateUserInput, UserDocument } from '../models/User';
 import { UserRoleDocument } from '../models/UserRole';
@@ -11,6 +12,7 @@ import { createPaginationOptions, QueryResult, toObjectId } from '../utils/datab
 import { withTransaction } from '../utils/transaction.helper';
 import { generatePassword } from '../utils/passwordGenerator';
 import { EmailService } from './email.service';
+import { getTestOrdersByPatientId } from './testOrder.service';
 
 export interface CreatePatientResult extends PatientDocument {
   temporaryPassword: string;
@@ -444,6 +446,51 @@ export class PatientService {
           page,
           limit: takeLimit
         }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : MESSAGES.DB_QUERY_ERROR,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
+      };
+    }
+  }
+
+  /**
+   * Get test orders for a patient
+   * Uses TestOrderService to retrieve test orders by patient ID
+   */
+  async getTestOrders(patientId: string | ObjectId): Promise<QueryResult<TestOrderDocument[]>> {
+    try {
+      const objectId = toObjectId(patientId);
+      if (!objectId) {
+        return {
+          success: false,
+          error: 'Invalid patient ID',
+          statusCode: HTTP_STATUS.BAD_REQUEST
+        };
+      }
+
+      // Verify patient exists
+      const patient = await this.collection.findOne({ 
+        _id: objectId,
+        deleted_at: { $exists: false }
+      });
+
+      if (!patient) {
+        return {
+          success: false,
+          error: 'Patient not found',
+          statusCode: HTTP_STATUS.NOT_FOUND
+        };
+      }
+
+      // Get test orders using TestOrderService
+      const testOrders = await getTestOrdersByPatientId(objectId);
+
+      return {
+        success: true,
+        data: testOrders as TestOrderDocument[]
       };
     } catch (error) {
       return {

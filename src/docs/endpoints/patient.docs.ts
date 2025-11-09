@@ -507,4 +507,113 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *
+ * /patients/{id}/test-orders:
+ *   get:
+ *     summary: Get patient's test orders
+ *     description: Get all test orders for a specific patient. Returns list of test orders with populated patient information, created by, and run by user details. **Required Privilege:** VIEW_USER or READ_ONLY
+ *     tags: [Patients]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Patient ID (MongoDB ObjectId)
+ *     responses:
+ *       200:
+ *         description: Test orders retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/TestOrder'
+ *             example:
+ *               success: true
+ *               message: "Success"
+ *               data:
+ *                 - _id: "507f1f77bcf86cd799439021"
+ *                   order_number: "ORD-1704067200000"
+ *                   patient_id: "507f1f77bcf86cd799439011"
+ *                   patient_email: "nguyen.van.a@email.com"
+ *                   patient_name: "Nguyen Van A"
+ *                   patient_dob: "1990-01-15"
+ *                   patient_gender: "male"
+ *                   patient_phone: "+84912345678"
+ *                   instrument_id: "507f1f77bcf86cd799439013"
+ *                   barcode: "BC-SAMPLE001"
+ *                   status: "completed"
+ *                   test_results: []
+ *                   comments: []
+ *                   created_at: "2024-01-01T00:00:00.000Z"
+ *                   created_by: "507f1f77bcf86cd799439015"
+ *                   created_by_name: "Admin User"
+ *                   updated_at: "2024-01-05T10:30:00.000Z"
+ *                   updated_by: "507f1f77bcf86cd799439015"
+ *                 - _id: "507f1f77bcf86cd799439022"
+ *                   order_number: "ORD-1704153600000"
+ *                   patient_id: "507f1f77bcf86cd799439011"
+ *                   patient_email: "nguyen.van.a@email.com"
+ *                   patient_name: "Nguyen Van A"
+ *                   patient_dob: "1990-01-15"
+ *                   patient_gender: "male"
+ *                   patient_phone: "+84912345678"
+ *                   status: "pending"
+ *                   test_results: []
+ *                   comments: []
+ *                   created_at: "2024-01-02T00:00:00.000Z"
+ *                   created_by: "507f1f77bcf86cd799439015"
+ *                   created_by_name: "Admin User"
+ *                   updated_at: "2024-01-02T00:00:00.000Z"
+ *                   updated_by: "507f1f77bcf86cd799439015"
+ *       400:
+ *         description: Bad request - Invalid patient ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "Validation error"
+ *               error: "Invalid patient ID"
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Forbidden - Insufficient permissions (requires VIEW_USER or READ_ONLY privilege)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Patient not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "Not found"
+ *               error: "Patient not found"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
