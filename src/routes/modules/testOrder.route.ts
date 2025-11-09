@@ -43,7 +43,7 @@ router.post(
   authMiddleware,
   checkPrivilege([PRIVILEGES.CREATE_TEST_ORDER]),
   ...createTestOrderValidation,
- 
+
   validationMiddleware,
   createOrder
 )
@@ -59,45 +59,22 @@ router.post(
 )
 
 // Get all Test Orders
-router.get(
-  '/',
-  authMiddleware,
-  getOrders
-)
+router.get('/', authMiddleware, getOrders)
 
 // Get logged-in patient's test orders (must be before /:id route)
-router.get(
-  '/me',
-  authMiddleware,
-  getMyTestOrders
-)
+router.get('/me', authMiddleware, getMyTestOrders)
+
+// Export test orders to Excel (must be before /:id route)
+router.get('/export', authMiddleware, checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]), exportOrdersToExcel)
 
 // Get Test Order by ID
-router.get(
-  '/:id',
-  authMiddleware,
-  ...testOrderIdValidation,
-  validationMiddleware,
-  getOrderById
-)
+router.get('/:id', authMiddleware, ...testOrderIdValidation, validationMiddleware, getOrderById)
 
 // Update Test Order
-router.put(
-  '/:id',
-  authMiddleware,
-  ...updateTestOrderValidation,
-  validationMiddleware,
-  updateOrder
-)
+router.put('/:id', authMiddleware, ...updateTestOrderValidation, validationMiddleware, updateOrder)
 
 // Delete Test Order
-router.delete(
-  '/:id',
-  authMiddleware,
-  ...testOrderIdValidation,
-  validationMiddleware,
-  deleteOrder
-)
+router.delete('/:id', authMiddleware, ...testOrderIdValidation, validationMiddleware, deleteOrder)
 
 // Comment Management (3.5.3)
 
@@ -155,14 +132,6 @@ router.post(
 
 // Reporting
 
-// Export test orders to Excel (3.5.4.1)
-router.get(
-  '/export',
-  authMiddleware,
-  checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]),
-  exportOrdersToExcel
-)
-
 // Print test order to PDF (3.5.4.2)
 router.get(
   '/:id/print',
@@ -182,12 +151,7 @@ router.post(
 )
 
 // Review test order (3.5.2.3)
-router.post(
-  '/:id/review',
-  authMiddleware,
-  checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]),
-  reviewOrder
-)
+router.post('/:id/review', authMiddleware, checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]), reviewOrder)
 
 // AI review test order (3.5.2.4)
 // GET: Preview AI review (does not apply)

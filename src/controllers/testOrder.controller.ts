@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
-import { ObjectId } from 'mongodb';
-import { HTTP_STATUS } from '../constants/httpStatus';
-import { MESSAGES } from '../constants/messages';
-import { getCollection } from '../config/database';
-import { CreateTestOrderInput, TestOrderDocument, UpdateTestOrderInput } from '../models/TestOrder';
+import { Request, Response } from 'express'
+import { ObjectId } from 'mongodb'
+import { HTTP_STATUS } from '../constants/httpStatus'
+import { MESSAGES } from '../constants/messages'
+import { getCollection } from '../config/database'
+import { CreateTestOrderInput, TestOrderDocument, UpdateTestOrderInput } from '../models/TestOrder'
 import {
   createTestOrder,
   deleteTestOrder,
@@ -20,37 +20,41 @@ import {
   exportToExcel,
   printToPDF,
   syncRawTestResult
-} from '../services/testOrder.service';
+} from '../services/testOrder.service'
+import { reviewTestOrder, aiReviewTestOrder } from '../services/testOrderReview.service'
+import { PatientService } from '../services/patient.service'
+import { logEvent } from '../utils/eventLog.helper'
+import { ApiError } from '../utils/apiError'
 import {
-  reviewTestOrder,
-  aiReviewTestOrder
-} from '../services/testOrderReview.service';
-import { PatientService } from '../services/patient.service';
-import { logEvent } from '../utils/eventLog.helper';
-import { ApiError } from '../utils/apiError';
-import { sendSuccessResponse, sendErrorResponse, handleCreateResult, handleUpdateResult, handleGetResult, handleDeleteResult } from '../utils/response.helper';
+  sendSuccessResponse,
+  sendErrorResponse,
+  handleCreateResult,
+  handleUpdateResult,
+  handleGetResult,
+  handleDeleteResult
+} from '../utils/response.helper'
 
 interface AuthenticatedRequest extends Request {
   user?: {
-    id: string;
-    email: string;
-    roles: string[];
-  };
+    id: string
+    email: string
+    roles: string[]
+  }
 }
 
 export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     // Check authentication
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
     // Validate required fields
-    const { patient_email, instrument_name } = req.body;
+    const { patient_email, instrument_name } = req.body
     if (!patient_email) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.REQUIRED_FIELD);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.REQUIRED_FIELD)
+      return
     }
 
     // Call service to create test order with QueryResult return
@@ -61,40 +65,36 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
           instrument_name
         },
         new ObjectId(req.user.id)
-      );
+      )
 
       // Handle service result
       if (!result.success) {
-        console.log('Service returned error:', result.error);
-        handleCreateResult(res, result);
-        return;
+        console.log('Service returned error:', result.error)
+        handleCreateResult(res, result)
+        return
       }
 
       // Log successful creation
-      await logEvent(
-        'CREATE',
-        'TestOrder',
-        result.data!._id.toString(),
-        req.user.id,
-        'Created new test order',
-        { patient_email, instrument_name }
-      );
+      await logEvent('CREATE', 'TestOrder', result.data!._id.toString(), req.user.id, 'Created new test order', {
+        patient_email,
+        instrument_name
+      })
 
       // Send success response
-      sendSuccessResponse(res, HTTP_STATUS.CREATED, MESSAGES.CREATED, result.data);
+      sendSuccessResponse(res, HTTP_STATUS.CREATED, MESSAGES.CREATED, result.data)
     } catch (serviceError) {
-      console.error('Service error creating test order:', serviceError);
-      throw serviceError; // Re-throw to be caught by outer catch
+      console.error('Service error creating test order:', serviceError)
+      throw serviceError // Re-throw to be caught by outer catch
     }
   } catch (error) {
-    console.error('Error creating test order:', error);
+    console.error('Error creating test order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       error instanceof Error ? error.message : MESSAGES.INTERNAL_ERROR
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -125,25 +125,25 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
 export const getOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const result = await getAllTestOrders();
-    
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+    const result = await getAllTestOrders()
+
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result)
 
     // Skip logging for read operations since they don't modify data
   } catch (error) {
-    console.error('Error fetching test orders:', error);
+    console.error('Error fetching test orders:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -179,45 +179,45 @@ export const getOrders = async (req: AuthenticatedRequest, res: Response): Promi
 export const getMyTestOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated')
+      return
     }
 
-    const userId = req.user.id;
-    const patientService = new PatientService();
+    const userId = req.user.id
+    const patientService = new PatientService()
 
     // Get patient record by user_id
-    const patientResult = await patientService.getByUserId(userId);
-    
+    const patientResult = await patientService.getByUserId(userId)
+
     if (!patientResult.success || !patientResult.data) {
       sendErrorResponse(
         res,
         patientResult.statusCode || HTTP_STATUS.NOT_FOUND,
         patientResult.error || 'Patient profile not found',
         'User is not associated with a patient account'
-      );
-      return;
+      )
+      return
     }
 
-    const patient = patientResult.data;
-    const patientId = patient._id;
+    const patient = patientResult.data
+    const patientId = patient._id
 
     // Get test orders for this patient
-    const testOrders = await getTestOrdersByPatientId(patientId);
+    const testOrders = await getTestOrdersByPatientId(patientId)
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, testOrders);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, testOrders)
 
     // Skip logging for read operations since they don't modify data
   } catch (error) {
-    console.error('Error fetching patient test orders:', error);
+    console.error('Error fetching patient test orders:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -297,321 +297,332 @@ export const getMyTestOrders = async (req: AuthenticatedRequest, res: Response):
  */
 // Process Sample (auto-create from barcode) controller
 export const processSampleOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  console.log('=== processSampleOrder CONTROLLER START ===');
-  console.log('Request body:', req.body);
-  console.log('User:', req.user);
-  
+  console.log('=== processSampleOrder CONTROLLER START ===')
+  console.log('Request body:', req.body)
+  console.log('User:', req.user)
+
   try {
     if (!req.user) {
-      console.log('No user found, returning unauthorized');
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      console.log('No user found, returning unauthorized')
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { barcode, instrument_id } = req.body;
-    console.log('Calling processSample with:', { barcode, instrument_id, userId: req.user.id });
-    
+    const { barcode, instrument_id } = req.body
+    console.log('Calling processSample with:', { barcode, instrument_id, userId: req.user.id })
+
     try {
-      const result = await processSample(barcode, instrument_id, new ObjectId(req.user.id));
-      console.log('processSample returned:', result ? 'success' : 'null');
-      
+      const result = await processSample(barcode, instrument_id, new ObjectId(req.user.id))
+      console.log('processSample returned:', result ? 'success' : 'null')
+
       if (!result) {
-        console.error('processSample returned null');
-        sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to process sample');
-        return;
+        console.error('processSample returned null')
+        sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to process sample')
+        return
       }
-      
-      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result)
     } catch (err) {
-      console.error('Error in processSampleOrder:', err);
+      console.error('Error in processSampleOrder:', err)
       if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
-        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
-        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR);
-        return;
+        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST
+        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR)
+        return
       }
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error processing sample (outer):', error);
+    console.error('Error processing sample (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Add comment to order
 export const addCommentToOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id } = req.params;
-    const { comment_text } = req.body;
+    const { id } = req.params
+    const { comment_text } = req.body
 
-    const created = await addComment(id, comment_text, new ObjectId(req.user.id));
+    const created = await addComment(id, comment_text, new ObjectId(req.user.id))
     if (!created) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR)
+      return
     }
 
-    await logEvent('CREATE', 'TestOrderComment', id, req.user.id, 'Added comment to test order', { comment_text });
+    await logEvent('CREATE', 'TestOrderComment', id, req.user.id, 'Added comment to test order', { comment_text })
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.CREATED, created);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.CREATED, created)
   } catch (error) {
-    console.error('Error adding comment to order:', error);
+    console.error('Error adding comment to order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Update comment in order
 export const updateCommentInOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id, commentIndex } = req.params;
-    const { comment_text } = req.body;
-    const idx = Number(commentIndex);
+    const { id, commentIndex } = req.params
+    const { comment_text } = req.body
+    const idx = Number(commentIndex)
 
-    const updated = await updateComment(id, idx, comment_text, new ObjectId(req.user.id));
+    const updated = await updateComment(id, idx, comment_text, new ObjectId(req.user.id))
     if (!updated) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR)
+      return
     }
 
-    await logEvent('UPDATE', 'TestOrderComment', id, req.user.id, `Updated comment #${idx}`, { comment_text });
+    await logEvent('UPDATE', 'TestOrderComment', id, req.user.id, `Updated comment #${idx}`, { comment_text })
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated)
   } catch (error) {
-    console.error('Error updating comment in order:', error);
+    console.error('Error updating comment in order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Delete comment from order
 export const deleteCommentFromOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id, commentIndex } = req.params;
-    const idx = Number(commentIndex);
+    const { id, commentIndex } = req.params
+    const idx = Number(commentIndex)
 
-    const updated = await deleteComment(id, idx, new ObjectId(req.user.id));
+    const updated = await deleteComment(id, idx, new ObjectId(req.user.id))
     if (!updated) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_DELETE_ERROR);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_DELETE_ERROR)
+      return
     }
 
-    await logEvent('DELETE', 'TestOrderComment', id, req.user.id, `Deleted comment #${idx}`, { comment_index: idx });
+    await logEvent('DELETE', 'TestOrderComment', id, req.user.id, `Deleted comment #${idx}`, { comment_index: idx })
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED, updated);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED, updated)
   } catch (error) {
-    console.error('Error deleting comment from order:', error);
+    console.error('Error deleting comment from order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Add test results to order
 export const addResultsToOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { barcode } = req.body;
+    const { barcode } = req.body
     if (!barcode) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, "Barcode is required");
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Barcode is required')
+      return
     }
 
-    const { results } = req.body;
+    const { results } = req.body
     if (!results || !Array.isArray(results) || results.length === 0) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, "Test results are required");
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Test results are required')
+      return
     }
 
     // First find the test order by barcode
-    const collection = getCollection<TestOrderDocument>('test_orders');
-    const testOrder = await collection.findOne({ barcode });
-    
+    const collection = getCollection<TestOrderDocument>('test_orders')
+    const testOrder = await collection.findOne({ barcode })
+
     if (!testOrder) {
-      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, "No test order found with this barcode");
-      return;
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, 'No test order found with this barcode')
+      return
     }
 
     // Add results to the found test order
-    const updated = await addTestResults(testOrder._id.toString(), results, new ObjectId(req.user.id));
+    const updated = await addTestResults(testOrder._id.toString(), results, new ObjectId(req.user.id))
     if (!updated) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR)
+      return
     }
 
-    await logEvent('UPDATE', 'TestOrder', testOrder._id.toString(), req.user.id, 'Added test results', { 
+    await logEvent('UPDATE', 'TestOrder', testOrder._id.toString(), req.user.id, 'Added test results', {
       results_count: results.length,
       barcode
-    });
+    })
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated)
   } catch (error) {
-    console.error('Error adding results to order:', error);
+    console.error('Error adding results to order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Complete test order
 export const completeOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id } = req.params;
-    const { reagent_usage } = req.body;
+    const { id } = req.params
+    const { reagent_usage } = req.body
 
     try {
-      const updated = await completeTestOrder(id, new ObjectId(req.user.id), reagent_usage);
+      const updated = await completeTestOrder(id, new ObjectId(req.user.id), reagent_usage)
       if (!updated) {
-        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR);
-        return;
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_SAVE_ERROR)
+        return
       }
 
-      await logEvent('UPDATE', 'TestOrder', id, req.user.id, 'Completed test order', { reagent_usage });
+      await logEvent('UPDATE', 'TestOrder', id, req.user.id, 'Completed test order', { reagent_usage })
 
-      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated)
     } catch (err) {
-      console.error('Error completing order:', err);
+      console.error('Error completing order:', err)
       if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
-        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
-        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR);
-        return;
+        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST
+        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR)
+        return
       }
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in completeOrder (outer):', error);
+    console.error('Error in completeOrder (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Export orders to Excel
 export const exportOrdersToExcel = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
     const filters = {
       month: req.query.month as string | undefined,
       status: req.query.status as string | undefined,
-      patient_name: req.query.patient_name as string | undefined
-    };
+      patient_name: req.query.patient_name as string | undefined,
+      order_id: req.query.order_id as string | undefined
+    }
 
     try {
-      const buffer = await exportToExcel(filters);
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="test_orders.xlsx"`);
-      res.status(200).send(buffer);
+      const buffer = await exportToExcel(filters)
+
+      // Generate filename based on whether it's single order or multiple
+      let filename = 'test_orders.xlsx'
+      if (filters.order_id) {
+        filename = `test_order_${filters.order_id}.xlsx`
+      } else if (filters.patient_name) {
+        const sanitizedPatientName = filters.patient_name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50)
+        filename = `test_orders_${sanitizedPatientName}.xlsx`
+      }
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+      res.status(200).send(buffer)
     } catch (err) {
-      console.error('Error exporting orders to Excel:', err);
+      console.error('Error exporting orders to Excel:', err)
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in exportOrdersToExcel (outer):', error);
+    console.error('Error in exportOrdersToExcel (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Print order to PDF (returns HTML for now)
 export const printOrderToPDF = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id } = req.params;
+    const { id } = req.params
 
     try {
-      const html = await printToPDF(id);
-      res.setHeader('Content-Type', 'text/html');
-      res.status(200).send(html);
+      const html = await printToPDF(id)
+      res.setHeader('Content-Type', 'text/html')
+      res.status(200).send(html)
     } catch (err) {
-      console.error('Error printing order to PDF:', err);
+      console.error('Error printing order to PDF:', err)
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in printOrderToPDF (outer):', error);
+    console.error('Error in printOrderToPDF (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -647,36 +658,36 @@ export const printOrderToPDF = async (req: AuthenticatedRequest, res: Response):
 export const getOrderById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const id = req.params.id;
+    const id = req.params.id
     if (!ObjectId.isValid(id)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT)
+      return
     }
 
-    const result = await getTestOrderById(id);
+    const result = await getTestOrderById(id)
 
     if (!result) {
-      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND)
+      return
     }
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result)
 
     // Skip logging for read operations since they don't modify data
   } catch (error) {
-    console.error('Error fetching test order:', error);
+    console.error('Error fetching test order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -708,45 +719,40 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
 export const updateOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const id = req.params.id;
+    const id = req.params.id
     if (!ObjectId.isValid(id)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT)
+      return
     }
 
-    const data: UpdateTestOrderInput = req.body;
-    const result = await updateTestOrder(id, data, new ObjectId(req.user.id));
+    const data: UpdateTestOrderInput = req.body
+    const result = await updateTestOrder(id, data, new ObjectId(req.user.id))
 
     if (!result) {
-      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND)
+      return
     }
 
-    const changedFields = Object.keys(data);
-    await logEvent(
-      'UPDATE',
-      'TestOrder',
-      id,
-      req.user.id,
-      `Updated test order fields: ${changedFields.join(', ')}`,
-      { changed_fields: changedFields }
-    );
+    const changedFields = Object.keys(data)
+    await logEvent('UPDATE', 'TestOrder', id, req.user.id, `Updated test order fields: ${changedFields.join(', ')}`, {
+      changed_fields: changedFields
+    })
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, result);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, result)
   } catch (error) {
-    console.error('Error updating test order:', error);
+    console.error('Error updating test order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -772,50 +778,43 @@ export const updateOrder = async (req: AuthenticatedRequest, res: Response): Pro
 export const deleteOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const id = req.params.id;
+    const id = req.params.id
     if (!ObjectId.isValid(id)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT)
+      return
     }
 
     // Fetch test order info before delete
-    const testOrder = await getTestOrderById(id);
+    const testOrder = await getTestOrderById(id)
     if (!testOrder) {
-      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, MESSAGES.NOT_FOUND)
+      return
     }
 
-    const result = await deleteTestOrder(id);
+    const result = await deleteTestOrder(id)
 
     if (!result) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_DELETE_ERROR);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.DB_DELETE_ERROR)
+      return
     }
 
-    await logEvent(
-      'DELETE',
-      'TestOrder',
-      id,
-      req.user.id,
-      `Deleted test order`,
-      { test_order_id: id }
-    );
+    await logEvent('DELETE', 'TestOrder', id, req.user.id, `Deleted test order`, { test_order_id: id })
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED);
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.DELETED)
   } catch (error) {
-    console.error('Error deleting test order:', error);
+    console.error('Error deleting test order:', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 /**
  * @openapi
@@ -864,188 +863,183 @@ export const deleteOrder = async (req: AuthenticatedRequest, res: Response): Pro
 export const syncRawTestResultController = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { rawResultId } = req.params;
+    const { rawResultId } = req.params
     if (!rawResultId || !ObjectId.isValid(rawResultId)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid raw result ID');
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid raw result ID')
+      return
     }
 
     try {
-      const updated = await syncRawTestResult(rawResultId, new ObjectId(req.user.id));
+      const updated = await syncRawTestResult(rawResultId, new ObjectId(req.user.id))
       if (!updated) {
-        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Failed to sync raw test result');
-        return;
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Failed to sync raw test result')
+        return
       }
 
       await logEvent('UPDATE', 'RawTestResult', rawResultId, req.user.id, 'Synced raw test result to test order', {
         test_order_id: updated._id.toString()
-      });
+      })
 
-      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated)
     } catch (err) {
-      console.error('Error in syncRawTestResultController:', err);
+      console.error('Error in syncRawTestResultController:', err)
       if ((err as any)?.name === 'ApiError' || (err as any)?.statusCode) {
-        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST;
-        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR);
-        return;
+        const status = (err as any).statusCode || HTTP_STATUS.BAD_REQUEST
+        sendErrorResponse(res, status, (err as any).message || MESSAGES.INTERNAL_ERROR)
+        return
       }
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in syncRawTestResultController (outer):', error);
+    console.error('Error in syncRawTestResultController (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // Review test order (3.5.2.3)
 export const reviewOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id } = req.params;
+    const { id } = req.params
     if (!ObjectId.isValid(id)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT)
+      return
     }
 
-    const { adjustments, comment } = req.body;
+    const { adjustments, comment } = req.body
 
     try {
-      const updated = await reviewTestOrder(
-        id,
-        new ObjectId(req.user.id),
-        adjustments,
-        comment
-      );
+      const updated = await reviewTestOrder(id, new ObjectId(req.user.id), adjustments, comment)
 
       if (!updated) {
-        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Failed to review test order');
-        return;
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Failed to review test order')
+        return
       }
 
-      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated);
+      sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.UPDATED, updated)
     } catch (err) {
-      console.error('Error in reviewOrder:', err);
+      console.error('Error in reviewOrder:', err)
       if (err instanceof Error) {
-        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message);
-        return;
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message)
+        return
       }
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in reviewOrder (outer):', error);
+    console.error('Error in reviewOrder (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // AI preview test order (GET) - Only analyzes, does not apply
 export const aiPreviewOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id } = req.params;
+    const { id } = req.params
     if (!ObjectId.isValid(id)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT)
+      return
     }
 
     try {
-      const { aiPreviewTestOrder } = await import('../services/testOrderReview.service');
-      const result = await aiPreviewTestOrder(id);
+      const { aiPreviewTestOrder } = await import('../services/testOrderReview.service')
+      const result = await aiPreviewTestOrder(id)
 
-      sendSuccessResponse(res, HTTP_STATUS.OK, 'AI preview completed successfully', result);
+      sendSuccessResponse(res, HTTP_STATUS.OK, 'AI preview completed successfully', result)
     } catch (err) {
-      console.error('Error in aiPreviewOrder:', err);
+      console.error('Error in aiPreviewOrder:', err)
       if (err instanceof Error) {
-        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message);
-        return;
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message)
+        return
       }
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in aiPreviewOrder (outer):', error);
+    console.error('Error in aiPreviewOrder (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
 
 // AI review test order (3.5.2.4) - Legacy endpoint (only analyzes, does not apply)
 export const aiReviewOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED)
+      return
     }
 
-    const { id } = req.params;
+    const { id } = req.params
     if (!ObjectId.isValid(id)) {
-      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT);
-      return;
+      sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, MESSAGES.INVALID_FORMAT)
+      return
     }
 
     try {
-      const result = await aiReviewTestOrder(id, new ObjectId(req.user.id));
+      const result = await aiReviewTestOrder(id, new ObjectId(req.user.id))
 
-      sendSuccessResponse(res, HTTP_STATUS.OK, 'AI review completed successfully', result);
+      sendSuccessResponse(res, HTTP_STATUS.OK, 'AI review completed successfully', result)
     } catch (err) {
-      console.error('Error in aiReviewOrder:', err);
+      console.error('Error in aiReviewOrder:', err)
       if (err instanceof Error) {
-        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message);
-        return;
+        sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, err.message)
+        return
       }
       sendErrorResponse(
         res,
         HTTP_STATUS.INTERNAL_SERVER_ERROR,
         MESSAGES.INTERNAL_ERROR,
         err instanceof Error ? err.message : String(err)
-      );
+      )
     }
   } catch (error) {
-    console.error('Error in aiReviewOrder (outer):', error);
+    console.error('Error in aiReviewOrder (outer):', error)
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Unknown error'
-    );
+    )
   }
-};
+}
