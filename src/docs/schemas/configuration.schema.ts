@@ -15,14 +15,12 @@
  *         config_name:
  *           type: string
  *           description: Human-readable configuration name
- *           example: "Sysmex XN-1000 Mode Configuration"
+ *           example: "Hematology Analyzer Configuration"
  *         config_value:
- *           type: object
- *           description: Configuration value (JSON object)
- *           example:
- *             mode: "CBC"
- *             auto_flag: true
- *             timeout: 300
+ *           type: number
+ *           format: float
+ *           description: Configuration value (numeric)
+ *           example: 1
  *         category:
  *           type: string
  *           description: Configuration category
@@ -31,13 +29,20 @@
  *           type: string
  *           nullable: true
  *           description: Type of instrument this configuration applies to
- *           example: "Sysmex XN-1000"
+ *           enum:
+ *             - "Hematology Analyzer"
+ *             - "Chemistry Analyzer"
+ *             - "Immunology Analyzer"
+ *             - "Coagulation Analyzer"
+ *             - "Blood Gas Analyzer"
+ *           example: "Hematology Analyzer"
  *         created_at:
  *           type: string
  *           format: date-time
  *           example: "2024-01-01T00:00:00.000Z"
  *         created_by:
  *           type: string
+ *           description: User ID who created the configuration (from JWT)
  *           example: 507f1f77bcf86cd799439013
  *         updated_at:
  *           type: string
@@ -45,6 +50,7 @@
  *           example: "2024-01-01T00:00:00.000Z"
  *         updated_by:
  *           type: string
+ *           description: User ID who last updated the configuration (from JWT)
  *           example: 507f1f77bcf86cd799439013
  * 
  *     CreateConfigurationRequest:
@@ -54,8 +60,6 @@
  *         - config_name
  *         - config_value
  *         - category
- *         - created_by
- *         - updated_by
  *       properties:
  *         config_key:
  *           type: string
@@ -64,14 +68,12 @@
  *         config_name:
  *           type: string
  *           description: Human-readable configuration name
- *           example: "Sysmex XN-1000 Mode Configuration"
+ *           example: "Hematology Analyzer Configuration"
  *         config_value:
- *           type: object
- *           description: Configuration value (JSON object)
- *           example:
- *             mode: "CBC"
- *             auto_flag: true
- *             timeout: 300
+ *           type: number
+ *           format: float
+ *           description: Configuration value (numeric)
+ *           example: 1
  *         category:
  *           type: string
  *           description: Configuration category
@@ -80,15 +82,13 @@
  *           type: string
  *           nullable: true
  *           description: Type of instrument this configuration applies to
- *           example: "Sysmex XN-1000"
- *         created_by:
- *           type: string
- *           description: User ID who created the configuration
- *           example: 507f1f77bcf86cd799439013
- *         updated_by:
- *           type: string
- *           description: User ID who last updated the configuration
- *           example: 507f1f77bcf86cd799439013
+ *           enum:
+ *             - "Hematology Analyzer"
+ *             - "Chemistry Analyzer"
+ *             - "Immunology Analyzer"
+ *             - "Coagulation Analyzer"
+ *             - "Blood Gas Analyzer"
+ *           example: "Hematology Analyzer"
  * 
  *     UpdateConfigurationRequest:
  *       type: object
@@ -100,14 +100,12 @@
  *         config_name:
  *           type: string
  *           description: Human-readable configuration name
- *           example: "Sysmex XN-1000 Mode Configuration"
+ *           example: "Hematology Analyzer Configuration"
  *         config_value:
- *           type: object
- *           description: Configuration value (JSON object)
- *           example:
- *             mode: "CBC+DIFF"
- *             auto_flag: true
- *             timeout: 300
+ *           type: number
+ *           format: float
+ *           description: Configuration value (numeric)
+ *           example: 1.5
  *         category:
  *           type: string
  *           description: Configuration category
@@ -116,10 +114,12 @@
  *           type: string
  *           nullable: true
  *           description: Type of instrument this configuration applies to
- *           example: "Sysmex XN-1000"
- *         updated_by:
- *           type: string
- *           description: User ID who is updating the configuration
- *           example: 507f1f77bcf86cd799439013
+ *           enum:
+ *             - "Hematology Analyzer"
+ *             - "Chemistry Analyzer"
+ *             - "Immunology Analyzer"
+ *             - "Coagulation Analyzer"
+ *             - "Blood Gas Analyzer"
+ *           example: "Hematology Analyzer"
  */
 

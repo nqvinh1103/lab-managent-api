@@ -10,7 +10,9 @@ export class ConfigurationService {
     return getCollection<ConfigurationDocument>('configurations');
   }
 
-  async create(configData: CreateConfigurationInput): Promise<QueryResult<ConfigurationDocument>> {
+  async create(
+    configData: CreateConfigurationInput & { created_by: ObjectId; updated_by: ObjectId }
+  ): Promise<QueryResult<ConfigurationDocument>> {
     try {
       const collection = this.getCollection();
       // Check if config_key already exists (unique validation)
@@ -141,7 +143,7 @@ export class ConfigurationService {
 
   async findByIdAndUpdate(
     id: string | ObjectId, 
-    updateData: UpdateConfigurationInput
+    updateData: UpdateConfigurationInput & { updated_by: ObjectId }
   ): Promise<QueryResult<ConfigurationDocument>> {
     try {
       const collection = this.getCollection();
