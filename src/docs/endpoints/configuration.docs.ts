@@ -4,9 +4,8 @@
  *   post:
  *     summary: Create a new configuration
  *     description: |
- *       Create a new configuration with unique config_key. Configurations are used to store system settings
- *       that can be synced to other services. Auto-syncs to other services on creation.
- *       
+ *       Create a new system configuration. The authenticated user's ID from JWT is used
+ *       as the creator (created_by) and updater (updated_by).
  *       **Required Privilege:** CREATE_CONFIGURATION
  *     tags: [Configurations]
  *     security:
@@ -18,16 +17,11 @@
  *           schema:
  *             $ref: '#/components/schemas/CreateConfigurationRequest'
  *           example:
- *             config_key: "instrument.sysmex_xn1000.mode"
- *             config_name: "Sysmex XN-1000 Mode Configuration"
- *             config_value:
- *               mode: "CBC"
- *               auto_flag: true
- *               timeout: 300
+ *             config_key: "COBAS_DEFAULT_CONFIG"
+ *             config_name: "Cobas Default Configuration"
+*             config_value: 1
  *             category: "instrument"
- *             instrument_type: "Sysmex XN-1000"
- *             created_by: "507f1f77bcf86cd799439013"
- *             updated_by: "507f1f77bcf86cd799439013"
+ *             instrument_type: "Hematology Analyzer"
  *     responses:
  *       201:
  *         description: Configuration created successfully
@@ -40,28 +34,21 @@
  *               message: "Created"
  *               data:
  *                 _id: "507f1f77bcf86cd799439011"
- *                 config_key: "instrument.sysmex_xn1000.mode"
- *                 config_name: "Sysmex XN-1000 Mode Configuration"
- *                 config_value:
- *                   mode: "CBC"
- *                   auto_flag: true
- *                   timeout: 300
+ *                 config_key: "COBAS_DEFAULT_CONFIG"
+ *                 config_name: "Cobas Default Configuration"
+*                 config_value: 1
  *                 category: "instrument"
- *                 instrument_type: "Sysmex XN-1000"
+ *                 instrument_type: "Hematology Analyzer"
  *                 created_at: "2024-01-01T00:00:00.000Z"
  *                 created_by: "507f1f77bcf86cd799439013"
  *                 updated_at: "2024-01-01T00:00:00.000Z"
  *                 updated_by: "507f1f77bcf86cd799439013"
  *       400:
- *         description: Bad request - Validation error or duplicate config_key
+ *         description: Bad request - Validation error
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- *             example:
- *               success: false
- *               message: "Database save error"
- *               error: "Configuration with this config_key already exists"
  *       401:
  *         description: Unauthorized - Missing or invalid JWT token
  *         content:
@@ -84,8 +71,7 @@
  *   get:
  *     summary: Get all configurations
  *     description: |
- *       Get paginated list of all configurations with optional filters by category and instrument_type.
- *       
+ *       Get paginated list of configurations with optional filters by category and instrument_type.
  *       **Required Privilege:** VIEW_CONFIGURATION
  *     tags: [Configurations]
  *     security:
@@ -109,14 +95,20 @@
  *         name: category
  *         schema:
  *           type: string
- *         description: Filter by configuration category
+ *         description: Filter by category
  *         example: "instrument"
  *       - in: query
  *         name: instrument_type
  *         schema:
  *           type: string
+ *           enum:
+ *             - "Hematology Analyzer"
+ *             - "Chemistry Analyzer"
+ *             - "Immunology Analyzer"
+ *             - "Coagulation Analyzer"
+ *             - "Blood Gas Analyzer"
  *         description: Filter by instrument type
- *         example: "Sysmex XN-1000"
+ *         example: "Hematology Analyzer"
  *     responses:
  *       200:
  *         description: Configurations retrieved successfully
@@ -129,31 +121,18 @@
  *               message: "Success"
  *               data:
  *                 - _id: "507f1f77bcf86cd799439011"
- *                   config_key: "instrument.sysmex_xn1000.mode"
- *                   config_name: "Sysmex XN-1000 Mode Configuration"
- *                   config_value:
- *                     mode: "CBC"
- *                     auto_flag: true
- *                     timeout: 300
+ *                   config_key: "COBAS_DEFAULT_CONFIG"
+ *                   config_name: "Cobas Default Configuration"
+*                   config_value: 1
  *                   category: "instrument"
- *                   instrument_type: "Sysmex XN-1000"
- *                   created_at: "2024-01-01T00:00:00.000Z"
- *                   updated_at: "2024-01-01T00:00:00.000Z"
- *                 - _id: "507f1f77bcf86cd799439012"
- *                   config_key: "system.email.smtp"
- *                   config_name: "SMTP Email Configuration"
- *                   config_value:
- *                     host: "smtp.example.com"
- *                     port: 587
- *                     secure: false
- *                   category: "system"
+ *                   instrument_type: "Hematology Analyzer"
  *                   created_at: "2024-01-01T00:00:00.000Z"
  *                   updated_at: "2024-01-01T00:00:00.000Z"
  *               pagination:
  *                 page: 1
  *                 limit: 10
- *                 total: 25
- *                 totalPages: 3
+ *                 total: 1
+ *                 totalPages: 1
  *       401:
  *         description: Unauthorized
  *         content:
@@ -178,7 +157,6 @@
  *     summary: Get configuration by ID
  *     description: |
  *       Get a specific configuration by its ID.
- *       
  *       **Required Privilege:** VIEW_CONFIGURATION
  *     tags: [Configurations]
  *     security:
@@ -203,14 +181,11 @@
  *               message: "Success"
  *               data:
  *                 _id: "507f1f77bcf86cd799439011"
- *                 config_key: "instrument.sysmex_xn1000.mode"
- *                 config_name: "Sysmex XN-1000 Mode Configuration"
- *                 config_value:
- *                   mode: "CBC"
- *                   auto_flag: true
- *                   timeout: 300
+ *                 config_key: "COBAS_DEFAULT_CONFIG"
+ *                 config_name: "Cobas Default Configuration"
+*                 config_value: 1
  *                 category: "instrument"
- *                 instrument_type: "Sysmex XN-1000"
+ *                 instrument_type: "Hematology Analyzer"
  *                 created_at: "2024-01-01T00:00:00.000Z"
  *                 created_by: "507f1f77bcf86cd799439013"
  *                 updated_at: "2024-01-01T00:00:00.000Z"
@@ -239,10 +214,6 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
- *             example:
- *               success: false
- *               message: "Not Found"
- *               error: "Configuration not found"
  *       500:
  *         description: Internal server error
  *         content:
@@ -254,8 +225,6 @@
  *     summary: Update configuration
  *     description: |
  *       Update an existing configuration. Changes are logged to event log for audit trail.
- *       Auto-syncs to other services on update.
- *       
  *       **Required Privilege:** MODIFY_CONFIGURATION
  *     tags: [Configurations]
  *     security:
@@ -275,12 +244,8 @@
  *           schema:
  *             $ref: '#/components/schemas/UpdateConfigurationRequest'
  *           example:
- *             config_name: "Sysmex XN-1000 Mode Configuration (Updated)"
- *             config_value:
- *               mode: "CBC+DIFF"
- *               auto_flag: true
- *               timeout: 300
- *             updated_by: "507f1f77bcf86cd799439013"
+*             config_value: 2
+ *             instrument_type: "Chemistry Analyzer"
  *     responses:
  *       200:
  *         description: Configuration updated successfully
@@ -293,20 +258,17 @@
  *               message: "Updated"
  *               data:
  *                 _id: "507f1f77bcf86cd799439011"
- *                 config_key: "instrument.sysmex_xn1000.mode"
- *                 config_name: "Sysmex XN-1000 Mode Configuration (Updated)"
- *                 config_value:
- *                   mode: "CBC+DIFF"
- *                   auto_flag: true
- *                   timeout: 300
+ *                 config_key: "COBAS_DEFAULT_CONFIG"
+ *                 config_name: "Cobas Default Configuration"
+*                 config_value: 2
  *                 category: "instrument"
- *                 instrument_type: "Sysmex XN-1000"
+ *                 instrument_type: "Chemistry Analyzer"
  *                 created_at: "2024-01-01T00:00:00.000Z"
  *                 created_by: "507f1f77bcf86cd799439013"
  *                 updated_at: "2024-01-01T12:00:00.000Z"
  *                 updated_by: "507f1f77bcf86cd799439013"
  *       400:
- *         description: Bad request - Validation error or duplicate config_key
+ *         description: Bad request - Validation error
  *         content:
  *           application/json:
  *             schema:
@@ -340,7 +302,6 @@
  *     summary: Delete configuration
  *     description: |
  *       Delete a configuration by ID. Operation is logged to event log for audit trail.
- *       
  *       **Required Privilege:** DELETE_CONFIGURATION
  *     tags: [Configurations]
  *     security:
@@ -394,4 +355,3 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-
