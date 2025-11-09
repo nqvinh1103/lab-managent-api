@@ -59,12 +59,13 @@ export const updateInstrumentValidation = [
   body('mode')
     .optional()
     .isIn(['ready', 'maintenance', 'inactive']).withMessage('Mode must be one of: ready, maintenance, inactive'),
-  body('mode_reason')
+    body('mode_reason')
     .optional()
-    .isBoolean().withMessage('is_active must be a boolean'),
+    .trim()
+    .isLength({ min: 1 }).withMessage('Mode reason cannot be empty if provided'),
   body('configuration_id')
     .optional()
-    .isMongoId().withMessage('configuration_id must be a valid MongoId'),
+    .isMongoId().withMessage('configuration_id must be a valid MongoId')
     .trim()
     .isLength({ min: 1 }).withMessage('Mode reason cannot be empty if provided'),
   body('last_qc_check')
