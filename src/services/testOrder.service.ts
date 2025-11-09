@@ -269,6 +269,47 @@ export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any
           preserveNullAndEmptyArrays: true
         }
       },
+      { $unwind: { path: "$comments", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "comments.created_by",
+          foreignField: "_id",
+          as: "comment_user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$comment_user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          "comments.created_by_name": "$comment_user.full_name"
+        }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          order_number: { $first: "$order_number" },
+          patient_id: { $first: "$patient_id" },
+          instrument_id: { $first: "$instrument_id" },
+          barcode: { $first: "$barcode" },
+          status: { $first: "$status" },
+          test_results: { $first: "$test_results" },
+          comments: { $push: "$comments" },
+          run_by: { $first: "$run_by" },
+          run_at: { $first: "$run_at" },
+          created_at: { $first: "$created_at" },
+          created_by: { $first: "$created_by" },
+          updated_at: { $first: "$updated_at" },
+          updated_by: { $first: "$updated_by" },
+          patient_info: { $first: "$patient_info" },
+          created_by_user: { $first: "$created_by_user" },
+          run_by_user: { $first: "$run_by_user" }
+        }
+      },
       {
         $addFields: {
           patient_email: "$patient_info.email",
@@ -277,7 +318,15 @@ export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any
           patient_gender: "$patient_info.gender",
           patient_phone: "$patient_info.phone_number",
           created_by_name: "$created_by_user.full_name",
-          run_by_name: "$run_by_user.full_name"
+          run_by_name: "$run_by_user.full_name",
+          // Filter out null comments (from unwind when comments array is empty)
+          comments: {
+            $filter: {
+              input: "$comments",
+              as: "comment",
+              cond: { $ne: ["$$comment", null] }
+            }
+          }
         }
       },
       {

@@ -5,6 +5,7 @@ import {
   deletePatient,
   getMyProfile,
   getPatient,
+  getPatientTestOrders,
   listPatients,
   updatePatient
 } from '../../controllers/patient.controller';
@@ -44,6 +45,16 @@ router.get(
   '/me',
   authMiddleware,
   getMyProfile
+);
+
+// Get patient's test orders (must be before /:id route)
+router.get(
+  '/:id/test-orders',
+  authMiddleware,
+  checkPrivilege([PRIVILEGES.VIEW_USER, PRIVILEGES.READ_ONLY]),
+  patientIdValidation,
+  validationMiddleware,
+  getPatientTestOrders
 );
 
 router.get(

@@ -14,7 +14,10 @@ import {
   processSampleOrder,
   syncRawTestResultController,
   updateCommentInOrder,
-  updateOrder
+  updateOrder,
+  reviewOrder,
+  aiReviewOrder,
+  aiPreviewOrder
 } from '../../controllers/testOrder.controller'
 import { authMiddleware, checkPrivilege } from '~/middlewares/auth.middleware'
 import { PRIVILEGES } from '~/constants/privileges'
@@ -176,6 +179,35 @@ router.post(
   authMiddleware,
   checkPrivilege([PRIVILEGES.EXECUTE_BLOOD_TESTING]),
   syncRawTestResultController
+)
+
+// Review test order (3.5.2.3)
+router.post(
+  '/:id/review',
+  authMiddleware,
+  checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]),
+  reviewOrder
+)
+
+// AI review test order (3.5.2.4)
+// GET: Preview AI review (does not apply)
+router.get(
+  '/:id/ai-review',
+  authMiddleware,
+  checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]),
+  ...testOrderIdValidation,
+  validationMiddleware,
+  aiPreviewOrder
+)
+
+// POST: Legacy AI review (only analyzes, does not apply) - for backward compatibility
+router.post(
+  '/:id/ai-review',
+  authMiddleware,
+  checkPrivilege([PRIVILEGES.REVIEW_TEST_ORDER]),
+  ...testOrderIdValidation,
+  validationMiddleware,
+  aiReviewOrder
 )
 
 export default router

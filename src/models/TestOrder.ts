@@ -27,11 +27,14 @@ export interface ITestOrder {
   patient_id: ObjectId;
   instrument_id?: ObjectId;
   barcode?: string;
-  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed' | 'reviewed' | 'ai_reviewed';
   test_results: any[];
   comments: any[];
   run_by?: ObjectId;       // chỉ set khi order được chạy
   run_at?: Date;           // chỉ set khi order được chạy
+  reviewed_by?: ObjectId;  // chỉ set khi order được review thủ công
+  reviewed_at?: Date;      // chỉ set khi order được review thủ công
+  ai_reviewed_at?: Date;   // chỉ set khi order được AI review
   created_at: Date;        // tạo lần đầu
   created_by: ObjectId;    // tạo lần đầu
   updated_at: Date;        // cập nhật mỗi lần update

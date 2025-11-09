@@ -252,3 +252,26 @@ export const listPatients = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+// Get patient's test orders
+export const getPatientTestOrders = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const result = await getPatientService().getTestOrders(id);
+
+    if (!result.success) {
+      handleGetResult(res, result);
+      return;
+    }
+
+    sendSuccessResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result.data || []);
+  } catch (error) {
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to get patient test orders'
+    );
+  }
+};
+
