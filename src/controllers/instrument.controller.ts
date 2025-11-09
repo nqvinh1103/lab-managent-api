@@ -4,6 +4,7 @@ import { HTTP_STATUS } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 import { InstrumentService } from '../services/instrument.service';
 import { logEvent } from '../utils/eventLog.helper';
+import { sendErrorResponse, sendSuccessResponse } from '../utils/response.helper';
 
 let instrumentService: InstrumentService | null = null;
 
@@ -296,11 +297,7 @@ export const changeModeInstrument = async (req: Request, res: Response): Promise
     const { mode, mode_reason } = req.body;
 
     if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
@@ -308,11 +305,9 @@ export const changeModeInstrument = async (req: Request, res: Response): Promise
     const result = await getInstrumentService().changeMode(id, mode, mode_reason, updatedBy);
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || 'Failed to change instrument mode',
-        error: result.error
-      });
+      const statusCode = result.statusCode || HTTP_STATUS.BAD_REQUEST;
+      const errorMessage = result.error || 'Failed to change instrument mode';
+      sendErrorResponse(res, statusCode, errorMessage, errorMessage);
       return;
     }
 
@@ -331,17 +326,14 @@ export const changeModeInstrument = async (req: Request, res: Response): Promise
       }
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: `Instrument mode changed to ${mode}`,
-      data: result.data
-    });
+    sendSuccessResponse(res, HTTP_STATUS.OK, `Instrument mode changed to ${mode}`, result.data);
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to change instrument mode'
-    });
+    sendErrorResponse(
+      res,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      MESSAGES.INTERNAL_ERROR,
+      error instanceof Error ? error.message : 'Failed to change instrument mode'
+    );
   }
 };
 
