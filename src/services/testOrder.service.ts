@@ -1,94 +1,95 @@
-import * as ExcelJS from "exceljs";
-import { ObjectId } from "mongodb";
-import { getCollection } from "../config/database";
-import { HTTP_STATUS } from "../constants/httpStatus";
+import * as ExcelJS from 'exceljs'
+import { ObjectId } from 'mongodb'
+import { getCollection } from '../config/database'
+import { HTTP_STATUS } from '../constants/httpStatus'
 import {
   CreateTestOrderInput,
   ITestOrder,
   TestOrderDocument,
   UpdateTestOrderWithPatientInput
-} from "../models/TestOrder";
-import { QueryResult, toObjectId } from "../utils/database.helper";
-import { applyFlagging } from "../utils/flagging.helper";
-import { generateHL7Message } from "../utils/hl7.generator";
-import { parseHL7Message } from "../utils/hl7.parser";
-import { getReagentValidationErrorMessage, REQUIRED_REAGENT_NAMES, validateRequiredReagents } from "../utils/reagent.helper";
-import { generateRawTestResults } from "../utils/testResultGenerator";
-import { withTransaction } from "../utils/transaction.helper";
-import { ParameterService } from "./parameter.service";
-import { RawTestResultService } from "./rawTestResult.service";
+} from '../models/TestOrder'
+import { QueryResult, toObjectId } from '../utils/database.helper'
+import { applyFlagging } from '../utils/flagging.helper'
+import { generateHL7Message } from '../utils/hl7.generator'
+import { parseHL7Message } from '../utils/hl7.parser'
+import {
+  getReagentValidationErrorMessage,
+  REQUIRED_REAGENT_NAMES,
+  validateRequiredReagents
+} from '../utils/reagent.helper'
+import { generateRawTestResults } from '../utils/testResultGenerator'
+import { withTransaction } from '../utils/transaction.helper'
+import { ParameterService } from './parameter.service'
+import { RawTestResultService } from './rawTestResult.service'
 
-const COLLECTION = "test_orders";
-const PATIENT_COLLECTION = 'patients';
+const COLLECTION = 'test_orders'
+const PATIENT_COLLECTION = 'patients'
 
 export const createTestOrder = async (
   input: CreateTestOrderInput & { patient_email: string; instrument_name?: string },
   createdBy: string | ObjectId
 ): Promise<QueryResult<TestOrderDocument>> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const patientCollection = getCollection<any>(PATIENT_COLLECTION)
+  const now = new Date()
   // 🔍 1. Tìm bệnh nhân theo email
-  const patient = await patientCollection.findOne({ email: input.patient_email });
+  const patient = await patientCollection.findOne({ email: input.patient_email })
   if (!patient) {
     return {
       success: false,
       error: `Patient with email not found`,
       statusCode: HTTP_STATUS.BAD_REQUEST
-    };
+    }
   }
 
   // Check for existing pending test orders
   const existingPendingOrder = await collection.findOne({
     patient_id: new ObjectId(patient._id),
-    status: "pending"
-  });
+    status: 'pending'
+  })
 
   if (existingPendingOrder) {
     return {
       success: false,
       error: `Patient already has a pending test order. Please complete the existing order before creating a new one.`,
       statusCode: HTTP_STATUS.BAD_REQUEST
-    };
+    }
   }
 
   // 🔍 Resolve instrument: prefer explicit instrument_id, otherwise try instrument_name
-  const instrumentCollection = getCollection<any>('instruments');
-  let resolvedInstrumentId: ObjectId | undefined;
+  const instrumentCollection = getCollection<any>('instruments')
+  let resolvedInstrumentId: ObjectId | undefined
   if (input.instrument_id) {
-    resolvedInstrumentId = new ObjectId(String(input.instrument_id));
+    resolvedInstrumentId = new ObjectId(String(input.instrument_id))
   } else if (input.instrument_name) {
     const instrument = await instrumentCollection.findOne({
-      $or: [
-        { instrument_name: input.instrument_name },
-        { name: input.instrument_name }
-      ]
-    });
+      $or: [{ instrument_name: input.instrument_name }, { name: input.instrument_name }]
+    })
     if (!instrument) {
       return {
         success: false,
         error: `Instrument with name not found`,
         statusCode: HTTP_STATUS.BAD_REQUEST
-      };
+      }
     }
-    console.log('Resolved instrument by name:', { instrumentId: instrument._id });
-    resolvedInstrumentId = instrument._id instanceof ObjectId ? instrument._id : new ObjectId(String(instrument._id));
+    console.log('Resolved instrument by name:', { instrumentId: instrument._id })
+    resolvedInstrumentId = instrument._id instanceof ObjectId ? instrument._id : new ObjectId(String(instrument._id))
   }
 
   // ✅ 2. Generate order number & barcode
-  const orderNumber = `ORD-${Date.now()}`;
-  const barcode = `BC-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+  const orderNumber = `ORD-${Date.now()}`
+  const barcode = `BC-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
 
   // ✅ 3. Normalize createdBy
-  const createdById = createdBy instanceof ObjectId ? createdBy : new ObjectId(String(createdBy));
+  const createdById = createdBy instanceof ObjectId ? createdBy : new ObjectId(String(createdBy))
 
   // ✅ 4. Build document (lưu patient_id, không lưu email)
   const newOrder: ITestOrder = {
     order_number: orderNumber,
-    patient_id: new ObjectId(patient._id),  // 👈 gán id từ bệnh nhân tìm được
+    patient_id: new ObjectId(patient._id), // 👈 gán id từ bệnh nhân tìm được
     instrument_id: resolvedInstrumentId,
     barcode,
-    status: "pending",
+    status: 'pending',
     test_results: [],
     comments: [],
     run_by: undefined,
@@ -96,103 +97,102 @@ export const createTestOrder = async (
     created_at: now,
     created_by: createdById,
     updated_at: now,
-    updated_by: createdById,
-  };
+    updated_by: createdById
+  }
 
   try {
     // ✅ 5. Insert vào DB
-    const result = await collection.insertOne(newOrder as unknown as TestOrderDocument);
+    const result = await collection.insertOne(newOrder as unknown as TestOrderDocument)
     if (!result.insertedId) {
-      console.error('Insert failed - no insertedId returned');
+      console.error('Insert failed - no insertedId returned')
       return {
         success: false,
-        error: "Failed to create test order",
+        error: 'Failed to create test order',
         statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
-      };
+      }
     }
 
     // ✅ 6. Lấy lại document vừa insert để verify và return
-    const inserted = await collection.findOne({ _id: result.insertedId });
+    const inserted = await collection.findOne({ _id: result.insertedId })
     if (!inserted) {
-      console.error('Insert succeeded but document not found after insert', { insertedId: result.insertedId });
+      console.error('Insert succeeded but document not found after insert', { insertedId: result.insertedId })
       return {
         success: false,
-        error: "Failed to create test order: document not found after insert",
+        error: 'Failed to create test order: document not found after insert',
         statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
-      };
+      }
     }
-
 
     return {
       success: true,
       data: inserted as TestOrderDocument
-    };
+    }
   } catch (err) {
-    console.error('DB error creating test order:', err);
+    console.error('DB error creating test order:', err)
     return {
       success: false,
-      error: "Failed to create test order",
+      error: 'Failed to create test order',
       statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR
-    };
+    }
   }
-};
+}
 
 export const getAllTestOrders = async (): Promise<any[]> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
 
   const items = await collection
     .aggregate([
       {
         $lookup: {
-          from: "patients",
-          localField: "patient_id",
-          foreignField: "_id",
-          as: "patient_info"
+          from: 'patients',
+          localField: 'patient_id',
+          foreignField: '_id',
+          as: 'patient_info'
         }
       },
       {
         $unwind: {
-          path: "$patient_info",
+          path: '$patient_info',
           preserveNullAndEmptyArrays: true
         }
       },
       {
         $lookup: {
-          from: "users",
-          localField: "created_by",
-          foreignField: "_id",
-          as: "created_by_user"
+          from: 'users',
+          localField: 'created_by',
+          foreignField: '_id',
+          as: 'created_by_user'
         }
       },
       {
         $unwind: {
-          path: "$created_by_user",
+          path: '$created_by_user',
           preserveNullAndEmptyArrays: true
         }
       },
       {
         $lookup: {
-          from: "users",
-          localField: "run_by",
-          foreignField: "_id",
-          as: "run_by_user"
+          from: 'users',
+          localField: 'run_by',
+          foreignField: '_id',
+          as: 'run_by_user'
         }
       },
       {
         $unwind: {
-          path: "$run_by_user",
+          path: '$run_by_user',
           preserveNullAndEmptyArrays: true
         }
       },
       {
         $addFields: {
-          patient_email: "$patient_info.email",
-          patient_name: "$patient_info.full_name",
-          patient_dob: "$patient_info.date_of_birth",
-          patient_gender: "$patient_info.gender",
-          patient_phone: "$patient_info.phone_number",
-          created_by_name: "$created_by_user.full_name",
-          run_by_name: "$run_by_user.full_name"
+          patient_email: '$patient_info.email',
+          patient_name: '$patient_info.full_name',
+          patient_dob: '$patient_info.date_of_birth',
+          patient_gender: '$patient_info.gender',
+          patient_phone: '$patient_info.phone_number',
+          created_by_name: '$created_by_user.full_name',
+          run_by_name: '$run_by_user.full_name'
         }
       },
       {
@@ -203,22 +203,22 @@ export const getAllTestOrders = async (): Promise<any[]> => {
         }
       },
       {
-        $sort: { created_at: -1 }  // Sort by most recent first (descending)
+        $sort: { created_at: -1 } // Sort by most recent first (descending)
       }
     ])
-    .toArray();
+    .toArray()
 
-  return items;
-};
+  return items
+}
 
 /**
  * Get test orders by patient ID
  * Similar to getAllTestOrders but filtered by patient_id
  */
 export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any[]> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
 
-  const patientObjectId = patientId instanceof ObjectId ? patientId : new ObjectId(String(patientId));
+  const patientObjectId = patientId instanceof ObjectId ? patientId : new ObjectId(String(patientId))
 
   const items = await collection
     .aggregate([
@@ -229,102 +229,102 @@ export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any
       },
       {
         $lookup: {
-          from: "patients",
-          localField: "patient_id",
-          foreignField: "_id",
-          as: "patient_info"
+          from: 'patients',
+          localField: 'patient_id',
+          foreignField: '_id',
+          as: 'patient_info'
         }
       },
       {
         $unwind: {
-          path: "$patient_info",
+          path: '$patient_info',
           preserveNullAndEmptyArrays: true
         }
       },
       {
         $lookup: {
-          from: "users",
-          localField: "created_by",
-          foreignField: "_id",
-          as: "created_by_user"
+          from: 'users',
+          localField: 'created_by',
+          foreignField: '_id',
+          as: 'created_by_user'
         }
       },
       {
         $unwind: {
-          path: "$created_by_user",
+          path: '$created_by_user',
           preserveNullAndEmptyArrays: true
         }
       },
       {
         $lookup: {
-          from: "users",
-          localField: "run_by",
-          foreignField: "_id",
-          as: "run_by_user"
+          from: 'users',
+          localField: 'run_by',
+          foreignField: '_id',
+          as: 'run_by_user'
         }
       },
       {
         $unwind: {
-          path: "$run_by_user",
+          path: '$run_by_user',
           preserveNullAndEmptyArrays: true
         }
       },
-      { $unwind: { path: "$comments", preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$comments', preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
-          from: "users",
-          localField: "comments.created_by",
-          foreignField: "_id",
-          as: "comment_user"
+          from: 'users',
+          localField: 'comments.created_by',
+          foreignField: '_id',
+          as: 'comment_user'
         }
       },
       {
         $unwind: {
-          path: "$comment_user",
+          path: '$comment_user',
           preserveNullAndEmptyArrays: true
         }
       },
       {
         $addFields: {
-          "comments.created_by_name": "$comment_user.full_name"
+          'comments.created_by_name': '$comment_user.full_name'
         }
       },
       {
         $group: {
-          _id: "$_id",
-          order_number: { $first: "$order_number" },
-          patient_id: { $first: "$patient_id" },
-          instrument_id: { $first: "$instrument_id" },
-          barcode: { $first: "$barcode" },
-          status: { $first: "$status" },
-          test_results: { $first: "$test_results" },
-          comments: { $push: "$comments" },
-          run_by: { $first: "$run_by" },
-          run_at: { $first: "$run_at" },
-          created_at: { $first: "$created_at" },
-          created_by: { $first: "$created_by" },
-          updated_at: { $first: "$updated_at" },
-          updated_by: { $first: "$updated_by" },
-          patient_info: { $first: "$patient_info" },
-          created_by_user: { $first: "$created_by_user" },
-          run_by_user: { $first: "$run_by_user" }
+          _id: '$_id',
+          order_number: { $first: '$order_number' },
+          patient_id: { $first: '$patient_id' },
+          instrument_id: { $first: '$instrument_id' },
+          barcode: { $first: '$barcode' },
+          status: { $first: '$status' },
+          test_results: { $first: '$test_results' },
+          comments: { $push: '$comments' },
+          run_by: { $first: '$run_by' },
+          run_at: { $first: '$run_at' },
+          created_at: { $first: '$created_at' },
+          created_by: { $first: '$created_by' },
+          updated_at: { $first: '$updated_at' },
+          updated_by: { $first: '$updated_by' },
+          patient_info: { $first: '$patient_info' },
+          created_by_user: { $first: '$created_by_user' },
+          run_by_user: { $first: '$run_by_user' }
         }
       },
       {
         $addFields: {
-          patient_email: "$patient_info.email",
-          patient_name: "$patient_info.full_name",
-          patient_dob: "$patient_info.date_of_birth",
-          patient_gender: "$patient_info.gender",
-          patient_phone: "$patient_info.phone_number",
-          created_by_name: "$created_by_user.full_name",
-          run_by_name: "$run_by_user.full_name",
+          patient_email: '$patient_info.email',
+          patient_name: '$patient_info.full_name',
+          patient_dob: '$patient_info.date_of_birth',
+          patient_gender: '$patient_info.gender',
+          patient_phone: '$patient_info.phone_number',
+          created_by_name: '$created_by_user.full_name',
+          run_by_name: '$run_by_user.full_name',
           // Filter out null comments (from unwind when comments array is empty)
           comments: {
             $filter: {
-              input: "$comments",
-              as: "comment",
-              cond: { $ne: ["$$comment", null] }
+              input: '$comments',
+              as: 'comment',
+              cond: { $ne: ['$$comment', null] }
             }
           }
         }
@@ -337,117 +337,116 @@ export const getTestOrdersByPatientId = async (patientId: ObjectId): Promise<any
         }
       },
       {
-        $sort: { created_at: -1 }  // Sort by most recent first (descending)
+        $sort: { created_at: -1 } // Sort by most recent first (descending)
       }
     ])
-    .toArray();
+    .toArray()
 
-  return items;
-};
-
+  return items
+}
 
 export const getTestOrderById = async (id: string): Promise<any | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
 
   try {
-    const _id = new ObjectId(id);
+    const _id = new ObjectId(id)
     const result = await collection
       .aggregate([
         { $match: { _id } },
         {
           $lookup: {
-            from: "patients",
-            localField: "patient_id",
-            foreignField: "_id",
-            as: "patient_info"
+            from: 'patients',
+            localField: 'patient_id',
+            foreignField: '_id',
+            as: 'patient_info'
           }
         },
-        { $unwind: { path: "$patient_info", preserveNullAndEmptyArrays: true } },
+        { $unwind: { path: '$patient_info', preserveNullAndEmptyArrays: true } },
         {
           $lookup: {
-            from: "users",
-            localField: "created_by",
-            foreignField: "_id",
-            as: "created_by_user"
+            from: 'users',
+            localField: 'created_by',
+            foreignField: '_id',
+            as: 'created_by_user'
           }
         },
         {
           $unwind: {
-            path: "$created_by_user",
+            path: '$created_by_user',
             preserveNullAndEmptyArrays: true
           }
         },
         {
           $lookup: {
-            from: "users",
-            localField: "run_by",
-            foreignField: "_id",
-            as: "run_by_user"
+            from: 'users',
+            localField: 'run_by',
+            foreignField: '_id',
+            as: 'run_by_user'
           }
         },
         {
           $unwind: {
-            path: "$run_by_user",
+            path: '$run_by_user',
             preserveNullAndEmptyArrays: true
           }
         },
         // Unwind comments to populate user info for each comment
-        { $unwind: { path: "$comments", preserveNullAndEmptyArrays: true } },
+        { $unwind: { path: '$comments', preserveNullAndEmptyArrays: true } },
         {
           $lookup: {
-            from: "users",
-            localField: "comments.created_by",
-            foreignField: "_id",
-            as: "comment_user"
+            from: 'users',
+            localField: 'comments.created_by',
+            foreignField: '_id',
+            as: 'comment_user'
           }
         },
         {
           $unwind: {
-            path: "$comment_user",
+            path: '$comment_user',
             preserveNullAndEmptyArrays: true
           }
         },
         {
           $addFields: {
-            "comments.created_by_name": "$comment_user.full_name"
+            'comments.created_by_name': '$comment_user.full_name'
           }
         },
         {
           $group: {
-            _id: "$_id",
-            order_number: { $first: "$order_number" },
-            patient_id: { $first: "$patient_id" },
-            instrument_id: { $first: "$instrument_id" },
-            barcode: { $first: "$barcode" },
-            status: { $first: "$status" },
-            test_results: { $first: "$test_results" },
-            comments: { $push: "$comments" },
-            run_by: { $first: "$run_by" },
-            run_at: { $first: "$run_at" },
-            created_at: { $first: "$created_at" },
-            created_by: { $first: "$created_by" },
-            updated_at: { $first: "$updated_at" },
-            updated_by: { $first: "$updated_by" },
-            patient_info: { $first: "$patient_info" },
-            created_by_user: { $first: "$created_by_user" },
-            run_by_user: { $first: "$run_by_user" }
+            _id: '$_id',
+            order_number: { $first: '$order_number' },
+            patient_id: { $first: '$patient_id' },
+            instrument_id: { $first: '$instrument_id' },
+            barcode: { $first: '$barcode' },
+            status: { $first: '$status' },
+            test_results: { $first: '$test_results' },
+            comments: { $push: '$comments' },
+            run_by: { $first: '$run_by' },
+            run_at: { $first: '$run_at' },
+            created_at: { $first: '$created_at' },
+            created_by: { $first: '$created_by' },
+            updated_at: { $first: '$updated_at' },
+            updated_by: { $first: '$updated_by' },
+            patient_info: { $first: '$patient_info' },
+            created_by_user: { $first: '$created_by_user' },
+            run_by_user: { $first: '$run_by_user' }
           }
         },
         {
           $addFields: {
-            patient_email: "$patient_info.email",
-            patient_name: "$patient_info.full_name",
-            patient_dob: "$patient_info.date_of_birth",
-            patient_gender: "$patient_info.gender",
-            patient_phone: "$patient_info.phone_number",
-            created_by_name: "$created_by_user.full_name",
-            run_by_name: "$run_by_user.full_name",
+            patient_email: '$patient_info.email',
+            patient_name: '$patient_info.full_name',
+            patient_dob: '$patient_info.date_of_birth',
+            patient_gender: '$patient_info.gender',
+            patient_phone: '$patient_info.phone_number',
+            created_by_name: '$created_by_user.full_name',
+            run_by_name: '$run_by_user.full_name',
             // Filter out null comments (from unwind when comments array is empty)
             comments: {
               $filter: {
-                input: "$comments",
-                as: "comment",
-                cond: { $ne: ["$$comment", null] }
+                input: '$comments',
+                as: 'comment',
+                cond: { $ne: ['$$comment', null] }
               }
             }
           }
@@ -460,53 +459,52 @@ export const getTestOrderById = async (id: string): Promise<any | null> => {
           }
         }
       ])
-      .toArray();
+      .toArray()
 
-    return result[0] || null;
+    return result[0] || null
   } catch (err) {
-    return null;
+    return null
   }
-};
-
+}
 
 export const updateTestOrder = async (
   id: string,
   data: UpdateTestOrderWithPatientInput,
   updatedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const patientCollection = getCollection<any>(PATIENT_COLLECTION)
+  const now = new Date()
 
   try {
-    const _id = new ObjectId(id);
-    
+    const _id = new ObjectId(id)
+
     // Get test order to access patient_id (outside transaction for initial check)
-    const testOrder = await collection.findOne({ _id });
+    const testOrder = await collection.findOne({ _id })
     if (!testOrder) {
-      return null;
+      return null
     }
 
     // Separate patient fields from test order fields
-    const patientFields = ['full_name', 'date_of_birth', 'gender', 'phone_number', 'address'];
-    const patientUpdateData: any = {};
-    const testOrderUpdateData: any = { updated_at: now, updated_by: updatedBy };
+    const patientFields = ['full_name', 'date_of_birth', 'gender', 'phone_number', 'address']
+    const patientUpdateData: any = {}
+    const testOrderUpdateData: any = { updated_at: now, updated_by: updatedBy }
 
     Object.keys(data).forEach((key) => {
       if (patientFields.includes(key)) {
-        patientUpdateData[key] = (data as any)[key];
+        patientUpdateData[key] = (data as any)[key]
       } else if (key !== '_id') {
-        testOrderUpdateData[key] = (data as any)[key];
+        testOrderUpdateData[key] = (data as any)[key]
       }
-    });
+    })
 
     // Check if updates are needed
-    const hasPatientUpdates = Object.keys(patientUpdateData).length > 0 && testOrder.patient_id;
-    const hasOrderUpdates = Object.keys(testOrderUpdateData).length > 1; // More than just updated_at
+    const hasPatientUpdates = Object.keys(patientUpdateData).length > 0 && testOrder.patient_id
+    const hasOrderUpdates = Object.keys(testOrderUpdateData).length > 1 // More than just updated_at
 
     if (!hasPatientUpdates && !hasOrderUpdates) {
       // No updates needed, return current order
-      return testOrder as TestOrderDocument;
+      return testOrder as TestOrderDocument
     }
 
     // Execute updates within transaction: update Patient + update TestOrder atomically
@@ -515,46 +513,42 @@ export const updateTestOrder = async (
       if (hasPatientUpdates) {
         await patientCollection.updateOne(
           { _id: new ObjectId(String(testOrder.patient_id)) },
-          { 
-            $set: { 
-              ...patientUpdateData, 
+          {
+            $set: {
+              ...patientUpdateData,
               updated_at: now,
               updated_by: updatedBy
-            } 
+            }
           },
           { session }
-        );
+        )
       }
 
       // Update test order
       if (hasOrderUpdates) {
-        await collection.updateOne(
-          { _id },
-          { $set: testOrderUpdateData },
-          { session }
-        );
+        await collection.updateOne({ _id }, { $set: testOrderUpdateData }, { session })
       }
-    });
+    })
 
     // Fetch updated order
-    const updated = await collection.findOne({ _id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    console.error('Error updating test order:', err);
-    return null;
+    console.error('Error updating test order:', err)
+    return null
   }
 }
 
 export const deleteTestOrder = async (id: string): Promise<boolean> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
   try {
-    const _id = new ObjectId(id);
-    const result = await collection.deleteOne({ _id });
-    return result.deletedCount === 1;
+    const _id = new ObjectId(id)
+    const result = await collection.deleteOne({ _id })
+    return result.deletedCount === 1
   } catch (err) {
-    return false;
+    return false
   }
-};
+}
 
 // Comment Management (3.5.3)
 
@@ -563,11 +557,11 @@ export const addComment = async (
   commentText: string,
   createdBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const now = new Date()
 
   try {
-    const _id = new ObjectId(orderId);
+    const _id = new ObjectId(orderId)
 
     // Create comment object
     const newComment = {
@@ -576,23 +570,23 @@ export const addComment = async (
       created_at: now,
       updated_at: now,
       updated_by: createdBy
-    };
+    }
 
     // Add comment to comments array
     await collection.updateOne(
       { _id },
-      { 
+      {
         $push: { comments: newComment },
         $set: { updated_at: now, updated_by: createdBy }
       }
-    );
+    )
 
-    const updated = await collection.findOne({ _id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    return null;
+    return null
   }
-};
+}
 
 export const updateComment = async (
   orderId: string,
@@ -600,18 +594,18 @@ export const updateComment = async (
   commentText: string,
   updatedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const now = new Date()
 
   try {
-    const _id = new ObjectId(orderId);
+    const _id = new ObjectId(orderId)
 
     // Update specific comment in array by index
-    const updateField = `comments.${commentIndex}`;
+    const updateField = `comments.${commentIndex}`
     await collection.updateOne(
       { _id },
-      { 
-        $set: { 
+      {
+        $set: {
           [`${updateField}.comment_text`]: commentText,
           [`${updateField}.updated_at`]: now,
           [`${updateField}.updated_by`]: updatedBy,
@@ -619,61 +613,61 @@ export const updateComment = async (
           updated_by: updatedBy
         }
       }
-    );
+    )
 
-    const updated = await collection.findOne({ _id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    return null;
+    return null
   }
-};
+}
 
 export const deleteComment = async (
   orderId: string,
   commentIndex: number,
   deletedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const now = new Date()
 
   try {
-    const _id = new ObjectId(orderId);
+    const _id = new ObjectId(orderId)
 
     // Get the current order to access comments array
-    const order = await collection.findOne({ _id });
+    const order = await collection.findOne({ _id })
     if (!order) {
-      return null;
+      return null
     }
 
     // Validate comment index
     if (!order.comments || commentIndex < 0 || commentIndex >= order.comments.length) {
-      return null;
+      return null
     }
 
     // Remove comment from array by index
     // Create a new array without the comment at the specified index
-    const updatedComments = [...order.comments];
-    updatedComments.splice(commentIndex, 1);
+    const updatedComments = [...order.comments]
+    updatedComments.splice(commentIndex, 1)
 
     // Update the order with the new comments array
     await collection.updateOne(
       { _id },
-      { 
+      {
         $set: {
           comments: updatedComments,
           updated_at: now,
           updated_by: deletedBy
         }
       }
-    );
+    )
 
-    const updated = await collection.findOne({ _id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    console.error('Error deleting comment:', err);
-    return null;
+    console.error('Error deleting comment:', err)
+    return null
   }
-};
+}
 
 // Process Sample API (3.6.1.2)
 export const processSample = async (
@@ -681,104 +675,106 @@ export const processSample = async (
   instrumentId: string,
   createdBy: ObjectId
 ): Promise<{ order: TestOrderDocument; isNew: boolean } | null> => {
-  
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const instrumentCollection = getCollection<any>('instruments');
-  const reagentCollection = getCollection<any>('instrument_reagents');
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const instrumentCollection = getCollection<any>('instruments')
+  const reagentCollection = getCollection<any>('instrument_reagents')
+  const now = new Date()
 
   try {
     // 1. Check if test order exists with barcode
-    const existingOrder = await collection.findOne({ barcode });
-    
+    const existingOrder = await collection.findOne({ barcode })
+
     if (!existingOrder) {
-      throw new Error(`Test order with barcode "${barcode}" not found`);
+      throw new Error(`Test order with barcode "${barcode}" not found`)
     }
-    
-    let order = existingOrder as TestOrderDocument;
-    
+
+    let order = existingOrder as TestOrderDocument
+
     // 2. Validate instrument exists and is ready BEFORE updating order
-    const newInstrumentId = new ObjectId(instrumentId);
-    const instrument = await instrumentCollection.findOne({ _id: newInstrumentId });
+    const newInstrumentId = new ObjectId(instrumentId)
+    const instrument = await instrumentCollection.findOne({ _id: newInstrumentId })
     if (!instrument) {
-      throw new Error('Instrument not found');
+      throw new Error('Instrument not found')
     }
 
     if (instrument.mode !== 'ready') {
-      throw new Error(`Instrument is not ready (current mode: ${instrument.mode || 'not set'})`);
+      throw new Error(`Instrument is not ready (current mode: ${instrument.mode || 'not set'})`)
     }
 
     // 3. Check reagent levels - validate all 5 required reagent types BEFORE updating order
-    const reagents = await reagentCollection.find({
-      instrument_id: newInstrumentId,
-      status: 'in_use'
-    }).toArray();
+    const reagents = await reagentCollection
+      .find({
+        instrument_id: newInstrumentId,
+        status: 'in_use'
+      })
+      .toArray()
 
     // Validate that all 5 required reagent types are present and have sufficient quantity
-    const validationResult = validateRequiredReagents(reagents as any[]);
+    const validationResult = validateRequiredReagents(reagents as any[])
     if (!validationResult.valid) {
-      throw new Error(getReagentValidationErrorMessage(validationResult));
+      throw new Error(getReagentValidationErrorMessage(validationResult))
     }
 
     // 4. Validate and update instrument_id consistency AFTER all validations pass
     if (order.instrument_id) {
       // Order already has instrument_id - check consistency
-      const existingInstrumentId = order.instrument_id instanceof ObjectId 
-        ? order.instrument_id 
-        : new ObjectId(String(order.instrument_id));
-      
+      const existingInstrumentId =
+        order.instrument_id instanceof ObjectId ? order.instrument_id : new ObjectId(String(order.instrument_id))
+
       if (!existingInstrumentId.equals(newInstrumentId)) {
-        throw new Error(`Test order is already assigned to instrument ${existingInstrumentId.toString()}. Cannot process with different instrument ${newInstrumentId.toString()}`);
+        throw new Error(
+          `Test order is already assigned to instrument ${existingInstrumentId.toString()}. Cannot process with different instrument ${newInstrumentId.toString()}`
+        )
       }
     } else {
       // Order doesn't have instrument_id - assign it now (only after all validations pass)
       await collection.updateOne(
         { _id: order._id },
-        { 
-          $set: { 
+        {
+          $set: {
             instrument_id: newInstrumentId,
             updated_at: now,
             updated_by: createdBy
-          } 
+          }
         }
-      );
+      )
     }
-    
+
     // Reload order from DB to ensure we have the latest data (including updated_at, updated_by)
-    const updatedOrder = await collection.findOne({ _id: order._id });
+    const updatedOrder = await collection.findOne({ _id: order._id })
     if (!updatedOrder) {
-      throw new Error('Failed to retrieve updated test order');
+      throw new Error('Failed to retrieve updated test order')
     }
-    order = updatedOrder as TestOrderDocument;
+    order = updatedOrder as TestOrderDocument
 
     // 5. Generate raw test results and HL7 message (3.6.1.3)
     try {
       // Get all active parameters
-      const parameterService = new ParameterService();
-      const parametersResult = await parameterService.findAll(1, 1000); // Get all parameters
-      
+      const parameterService = new ParameterService()
+      const parametersResult = await parameterService.findAll(1, 1000) // Get all parameters
+
       if (!parametersResult.success) {
-        console.error('Failed to get parameters:', parametersResult.error);
-        return { order: order, isNew: false };
+        console.error('Failed to get parameters:', parametersResult.error)
+        return { order: order, isNew: false }
       }
 
       if (!parametersResult.data || parametersResult.data.parameters.length === 0) {
-        console.error('No active parameters found in database');
-        return { order: order, isNew: false };
+        console.error('No active parameters found in database')
+        return { order: order, isNew: false }
       }
 
-      const parameters = parametersResult.data.parameters;
-      
+      const parameters = parametersResult.data.parameters
+
       // Get patient for gender-specific ranges
-      const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-      const patient = order.patient_id ? await patientCollection.findOne({ _id: order.patient_id }) : null;
+      const patientCollection = getCollection<any>(PATIENT_COLLECTION)
+      const patient = order.patient_id ? await patientCollection.findOne({ _id: order.patient_id }) : null
 
       // Generate raw test results
-      const rawTestResults = generateRawTestResults(parameters, patient);
+      const rawTestResults = generateRawTestResults(parameters, patient)
 
       if (rawTestResults.length === 0) {
-        console.error('No raw test results generated');
-        return { order: order, isNew: false };
+        console.error('No raw test results generated')
+        return { order: order, isNew: false }
       }
 
       // Generate HL7 message
@@ -787,10 +783,10 @@ export const processSample = async (
         patient: patient,
         instrument: instrument,
         rawTestResults: rawTestResults
-      });
+      })
 
       // Save to RawTestResult collection
-      const rawTestResultService = new RawTestResultService();
+      const rawTestResultService = new RawTestResultService()
       const createResult = await rawTestResultService.create({
         test_order_id: order._id,
         barcode: barcode,
@@ -800,27 +796,27 @@ export const processSample = async (
         sent_at: now,
         can_delete: false,
         created_by: createdBy
-      });
+      })
 
       if (!createResult.success) {
-        console.error('Failed to create raw test result:', createResult.error);
+        console.error('Failed to create raw test result:', createResult.error)
       }
     } catch (hl7Error) {
       // Log error but don't fail the processSample operation
-      console.error('Error generating HL7 message in processSample:', hl7Error);
+      console.error('Error generating HL7 message in processSample:', hl7Error)
     }
 
-    return { order: order, isNew: false };
+    return { order: order, isNew: false }
   } catch (err) {
-    console.error('Error in processSample:', err);
+    console.error('Error in processSample:', err)
     // Re-throw validation errors so controller can handle with appropriate status code
     // Only return null for unexpected errors
     if (err instanceof Error) {
-      throw err;
+      throw err
     }
-    return null;
+    return null
   }
-};
+}
 
 // Add Test Results with Flagging (Step 17)
 export const addTestResults = async (
@@ -828,49 +824,49 @@ export const addTestResults = async (
   results: Array<{ parameter_id: string; result_value: number; unit: string }>,
   updatedBy: ObjectId
 ): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const parameterCollection = getCollection<any>('parameters');
-  const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const parameterCollection = getCollection<any>('parameters')
+  const patientCollection = getCollection<any>(PATIENT_COLLECTION)
+  const now = new Date()
 
   try {
-    const _id = new ObjectId(orderId);
+    const _id = new ObjectId(orderId)
 
     // Get test order to access patient_id
-    const testOrder = await collection.findOne({ _id });
+    const testOrder = await collection.findOne({ _id })
     if (!testOrder) {
-      throw new Error('Test order not found');
+      throw new Error('Test order not found')
     }
 
     // Get patient for gender/age_group (for flagging configuration)
-    const patient = testOrder.patient_id ? await patientCollection.findOne({ _id: testOrder.patient_id }) : null;
+    const patient = testOrder.patient_id ? await patientCollection.findOne({ _id: testOrder.patient_id }) : null
 
     // Process each result with flagging logic using applyFlagging helper
     const processedResults = await Promise.all(
       results.map(async (r) => {
-        const parameter = await parameterCollection.findOne({ _id: new ObjectId(r.parameter_id) });
-        
+        const parameter = await parameterCollection.findOne({ _id: new ObjectId(r.parameter_id) })
+
         if (!parameter) {
-          throw new Error(`Parameter ${r.parameter_id} not found`);
+          throw new Error(`Parameter ${r.parameter_id} not found`)
         }
 
         // Get parameter normal_range as fallback
-        let fallbackRange: { min?: number; max?: number; text?: string } | undefined;
+        let fallbackRange: { min?: number; max?: number; text?: string } | undefined
         if (parameter.normal_range) {
-          const range = parameter.normal_range as any;
+          const range = parameter.normal_range as any
           if (range.male && range.female && patient?.gender) {
-            const genderRange = patient.gender === 'male' ? range.male : range.female;
+            const genderRange = patient.gender === 'male' ? range.male : range.female
             fallbackRange = {
               min: genderRange.min,
               max: genderRange.max,
               text: genderRange.text || `${genderRange.min}-${genderRange.max} ${parameter.unit}`
-            };
+            }
           } else if (range.min !== undefined && range.max !== undefined) {
             fallbackRange = {
               min: range.min,
               max: range.max,
               text: range.text || `${range.min}-${range.max} ${parameter.unit}`
-            };
+            }
           }
         }
 
@@ -881,7 +877,7 @@ export const addTestResults = async (
           patient?.gender,
           undefined, // age_group - can be calculated from patient DOB if needed
           fallbackRange
-        );
+        )
 
         return {
           parameter_id: new ObjectId(r.parameter_id),
@@ -892,9 +888,9 @@ export const addTestResults = async (
           flag_type: flaggingResult.flag_type,
           flagging_configuration_id: flaggingResult.flagging_configuration_id,
           measured_at: now
-        };
+        }
       })
-    );
+    )
 
     // Add results to test order and mark order as completed
     await collection.updateOne(
@@ -909,15 +905,15 @@ export const addTestResults = async (
           updated_by: updatedBy
         }
       }
-    );
+    )
 
-    const updated = await collection.findOne({ _id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    console.error('Error in addTestResults:', err);
-    return null;
+    console.error('Error in addTestResults:', err)
+    return null
   }
-};
+}
 
 // Complete Test Order with Reagent Tracking (Step 18)
 export const completeTestOrder = async (
@@ -925,103 +921,111 @@ export const completeTestOrder = async (
   runBy: ObjectId,
   reagentUsage?: Array<{ reagent_lot_number: string; quantity_used: number }>
 ): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const reagentCollection = getCollection<any>('instrument_reagents');
-  const usageHistoryCollection = getCollection<any>('reagent_usage_history');
-  const now = new Date();
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const reagentCollection = getCollection<any>('instrument_reagents')
+  const usageHistoryCollection = getCollection<any>('reagent_usage_history')
+  const now = new Date()
 
   try {
-    const _id = new ObjectId(orderId);
+    const _id = new ObjectId(orderId)
 
     // Get order first (outside transaction for initial checks)
-    const order = await collection.findOne({ _id });
+    const order = await collection.findOne({ _id })
     if (!order) {
-      throw new Error('Test order not found');
+      throw new Error('Test order not found')
     }
 
     if (order.status === 'completed') {
-      throw new Error('Test order already completed');
+      throw new Error('Test order already completed')
     }
 
     // Allow transitions: 'pending' → 'completed' or 'running' → 'completed'
     if (order.status !== 'pending' && order.status !== 'running') {
-      throw new Error(`Cannot complete test order with status: ${order.status}. Only 'pending' or 'running' orders can be completed.`);
+      throw new Error(
+        `Cannot complete test order with status: ${order.status}. Only 'pending' or 'running' orders can be completed.`
+      )
     }
 
     // Pre-validate and prepare reagent usage data (outside transaction)
-    let reagentLookupMap: Map<string, any> = new Map();
-    
+    let reagentLookupMap: Map<string, any> = new Map()
+
     // Ensure instrument_id is ObjectId for consistent querying
     if (!order.instrument_id) {
-      throw new Error('Test order must have an instrument_id to complete');
+      throw new Error('Test order must have an instrument_id to complete')
     }
-    
-    const instrumentObjectId = toObjectId(order.instrument_id);
+
+    const instrumentObjectId = toObjectId(order.instrument_id)
     if (!instrumentObjectId) {
-      throw new Error('Invalid instrument ID in test order');
+      throw new Error('Invalid instrument ID in test order')
     }
 
     // If reagentUsage not provided, auto-select reagents for each required type
     if (!reagentUsage || reagentUsage.length === 0) {
       // Get all active reagents for this instrument
-      const reagents = await reagentCollection.find({
-        instrument_id: instrumentObjectId,
-        status: 'in_use',
-        reagent_name: { $in: REQUIRED_REAGENT_NAMES }
-      }).toArray();
+      const reagents = await reagentCollection
+        .find({
+          instrument_id: instrumentObjectId,
+          status: 'in_use',
+          reagent_name: { $in: REQUIRED_REAGENT_NAMES }
+        })
+        .toArray()
 
       // Create map by reagent_name (should only have one per type)
-      const reagentMap = new Map<string, any>();
-      reagents.forEach(reagent => {
-        const name = reagent.reagent_name;
+      const reagentMap = new Map<string, any>()
+      reagents.forEach((reagent) => {
+        const name = reagent.reagent_name
         if (!reagentMap.has(name)) {
-          reagentMap.set(name, reagent);
+          reagentMap.set(name, reagent)
         }
-      });
+      })
 
       // Auto-generate reagentUsage array
-      reagentUsage = [];
+      reagentUsage = []
       for (const requiredName of REQUIRED_REAGENT_NAMES) {
-        const reagent = reagentMap.get(requiredName);
+        const reagent = reagentMap.get(requiredName)
         if (!reagent) {
-          throw new Error(`Required reagent "${requiredName}" is not installed on this instrument`);
+          throw new Error(`Required reagent "${requiredName}" is not installed on this instrument`)
         }
-        
+
         // Use usage_per_run_max if available, otherwise use usage_per_run_min, otherwise default to 1
-        const quantityUsed = reagent.usage_per_run_max || reagent.usage_per_run_min || 1;
-        
+        const quantityUsed = reagent.usage_per_run_max || reagent.usage_per_run_min || 1
+
         reagentUsage.push({
           reagent_lot_number: reagent.reagent_lot_number,
           quantity_used: quantityUsed
-        });
+        })
       }
     }
 
     // Extract all reagent_lot_numbers for batch query
-    const reagentLotNumbers = reagentUsage.map(u => u.reagent_lot_number);
-    
+    const reagentLotNumbers = reagentUsage.map((u) => u.reagent_lot_number)
+
     // Batch query all reagents at once (outside transaction for validation)
-    const reagents = await reagentCollection.find({
-      reagent_lot_number: { $in: reagentLotNumbers },
-      instrument_id: instrumentObjectId,
-      status: 'in_use'
-    }).toArray();
+    const reagents = await reagentCollection
+      .find({
+        reagent_lot_number: { $in: reagentLotNumbers },
+        instrument_id: instrumentObjectId,
+        status: 'in_use'
+      })
+      .toArray()
 
     // Create lookup map for O(1) access
-    reagents.forEach(reagent => {
-      reagentLookupMap.set(reagent.reagent_lot_number, reagent);
-    });
+    reagents.forEach((reagent) => {
+      reagentLookupMap.set(reagent.reagent_lot_number, reagent)
+    })
 
     // Validate all reagents exist before entering transaction
-    const missingReagents: string[] = [];
+    const missingReagents: string[] = []
     for (const usage of reagentUsage) {
       if (!reagentLookupMap.has(usage.reagent_lot_number)) {
-        missingReagents.push(usage.reagent_lot_number);
+        missingReagents.push(usage.reagent_lot_number)
       }
     }
 
     if (missingReagents.length > 0) {
-      throw new Error(`Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`);
+      throw new Error(
+        `Reagents not found or not in use for instrument: ${missingReagents.join(', ')}. Please verify reagent lot numbers.`
+      )
     }
 
     // Execute within transaction: update TestOrder status + update InstrumentReagent quantity + insert ReagentUsageHistory
@@ -1040,22 +1044,24 @@ export const completeTestOrder = async (
           }
         },
         { session }
-      );
+      )
 
       // Track reagent usage
       if (reagentUsage && reagentUsage.length > 0) {
         for (const usage of reagentUsage) {
           // Get reagent from pre-validated lookup map
-          const reagent = reagentLookupMap.get(usage.reagent_lot_number);
-          
+          const reagent = reagentLookupMap.get(usage.reagent_lot_number)
+
           if (!reagent) {
             // This should not happen if pre-validation passed, but check anyway
-            throw new Error(`Reagent with lot number ${usage.reagent_lot_number} not found for instrument`);
+            throw new Error(`Reagent with lot number ${usage.reagent_lot_number} not found for instrument`)
           }
 
           // Validate quantity_remaining is sufficient
           if (reagent.quantity_remaining < usage.quantity_used) {
-            throw new Error(`Insufficient quantity for reagent ${usage.reagent_lot_number}. Available: ${reagent.quantity_remaining}, Required: ${usage.quantity_used}`);
+            throw new Error(
+              `Insufficient quantity for reagent ${usage.reagent_lot_number}. Available: ${reagent.quantity_remaining}, Required: ${usage.quantity_used}`
+            )
           }
 
           // Update quantity_remaining (within transaction)
@@ -1065,137 +1071,291 @@ export const completeTestOrder = async (
               $inc: { quantity_remaining: -usage.quantity_used }
             },
             { session }
-          );
+          )
 
           // Create usage history (within transaction)
-          await usageHistoryCollection.insertOne({
-            reagent_lot_number: usage.reagent_lot_number,
-            instrument_id: instrumentObjectId,
-            test_order_id: _id,
-            quantity_used: usage.quantity_used,
-            used_by: runBy,
-            used_at: now,
-            created_at: now,
-            created_by: runBy
-          }, { session });
+          await usageHistoryCollection.insertOne(
+            {
+              reagent_lot_number: usage.reagent_lot_number,
+              instrument_id: instrumentObjectId,
+              test_order_id: _id,
+              quantity_used: usage.quantity_used,
+              used_by: runBy,
+              used_at: now,
+              created_at: now,
+              created_by: runBy
+            },
+            { session }
+          )
         }
       }
-    });
+    })
 
     // Fetch updated order
-    const updated = await collection.findOne({ _id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    console.error('Error in completeTestOrder:', err);
-    return null;
+    console.error('Error in completeTestOrder:', err)
+    return null
   }
-};
+}
+
+// Helper function to export single order with full details to Excel
+const exportSingleOrderToExcel = async (
+  order: TestOrderDocument,
+  patientCollection: any,
+  userCollection: any,
+  parameterCollection: any
+): Promise<Buffer> => {
+  // Fetch all related data
+  const patient = await patientCollection.findOne({ _id: order.patient_id })
+  const createdBy = await userCollection.findOne({ _id: order.created_by })
+  const runBy = order.run_by ? await userCollection.findOne({ _id: order.run_by }) : null
+
+  // Fetch parameter names for test results
+  const parameterIds = order.test_results?.map((r) => r.parameter_id) || []
+  const parameters = await parameterCollection.find({ _id: { $in: parameterIds } }).toArray()
+  const parameterMap = new Map(parameters.map((p: any) => [p._id.toString(), p.parameter_name]))
+
+  // Fetch user names for comments
+  const commentUserIds = order.comments?.map((c) => c.created_by).filter(Boolean) || []
+  const commentUsers = await userCollection.find({ _id: { $in: commentUserIds } }).toArray()
+  const commentUserMap = new Map(commentUsers.map((u: any) => [u._id.toString(), u.full_name]))
+
+  // Create workbook for single order with detailed sheets
+  const workbook = new ExcelJS.Workbook()
+
+  // Sheet 1: Order Information
+  const orderSheet = workbook.addWorksheet('Order Information')
+  orderSheet.columns = [
+    { header: 'Field', key: 'field', width: 25 },
+    { header: 'Value', key: 'value', width: 50 }
+  ]
+
+  orderSheet.addRow({ field: 'Order ID', value: order._id?.toString() || order.order_number || 'N/A' })
+  orderSheet.addRow({ field: 'Patient Name', value: patient?.full_name || 'N/A' })
+  orderSheet.addRow({ field: 'Gender', value: patient?.gender || 'N/A' })
+  orderSheet.addRow({
+    field: 'Date of Birth',
+    value: patient?.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'N/A'
+  })
+  orderSheet.addRow({ field: 'Phone Number', value: patient?.phone_number || 'N/A' })
+  orderSheet.addRow({ field: 'Email', value: patient?.email || 'N/A' })
+  orderSheet.addRow({ field: 'Status', value: order.status || 'N/A' })
+  orderSheet.addRow({ field: 'Created By', value: createdBy?.full_name || 'N/A' })
+  orderSheet.addRow({
+    field: 'Created On',
+    value: order.created_at ? new Date(order.created_at).toLocaleString() : 'N/A'
+  })
+  orderSheet.addRow({ field: 'Run By', value: runBy?.full_name || 'N/A' })
+  orderSheet.addRow({ field: 'Run On', value: order.run_at ? new Date(order.run_at).toLocaleString() : 'N/A' })
+
+  // Sheet 2: Test Results
+  const resultsSheet = workbook.addWorksheet('Test Results')
+  resultsSheet.columns = [
+    { header: 'Parameter', key: 'parameter', width: 30 },
+    { header: 'Result Value', key: 'result_value', width: 15 },
+    { header: 'Unit', key: 'unit', width: 10 },
+    { header: 'Reference Range', key: 'reference_range', width: 25 },
+    { header: 'Flagged', key: 'flagged', width: 10 }
+  ]
+
+  if (order.test_results && order.test_results.length > 0) {
+    order.test_results.forEach((r) => {
+      const parameterName = parameterMap.get(r.parameter_id?.toString()) || r.parameter_id?.toString() || 'N/A'
+      resultsSheet.addRow({
+        parameter: parameterName,
+        result_value: r.result_value ?? 'N/A',
+        unit: r.unit || 'N/A',
+        reference_range: r.reference_range_text || 'N/A',
+        flagged: r.is_flagged ? 'Yes' : 'No'
+      })
+    })
+  } else {
+    resultsSheet.addRow({ parameter: 'No results', result_value: '', unit: '', reference_range: '', flagged: '' })
+  }
+
+  // Sheet 3: Comments
+  const commentsSheet = workbook.addWorksheet('Comments')
+  commentsSheet.columns = [
+    { header: 'Comment', key: 'comment', width: 50 },
+    { header: 'Created By', key: 'created_by', width: 25 },
+    { header: 'Created At', key: 'created_at', width: 20 }
+  ]
+
+  if (order.comments && order.comments.length > 0) {
+    order.comments.forEach((c) => {
+      const createdByName = c.created_by
+        ? commentUserMap.get(c.created_by.toString()) || c.created_by.toString()
+        : 'N/A'
+      commentsSheet.addRow({
+        comment: c.comment_text || 'N/A',
+        created_by: createdByName,
+        created_at: c.created_at ? new Date(c.created_at).toLocaleString() : 'N/A'
+      })
+    })
+  } else {
+    commentsSheet.addRow({ comment: 'No comments', created_by: '', created_at: '' })
+  }
+
+  // Generate buffer
+  const buffer = await workbook.xlsx.writeBuffer()
+  return Buffer.from(buffer)
+}
 
 // Excel Export (Step 23) - 3.5.4.1
 export const exportToExcel = async (filters: {
-  month?: string;
-  status?: string;
-  patient_name?: string;
+  month?: string
+  status?: string
+  patient_name?: string
+  order_id?: string
 }): Promise<Buffer> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const patientCollection = getCollection<any>('patients');
-  const userCollection = getCollection<any>('users');
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const patientCollection = getCollection<any>('patients')
+  const userCollection = getCollection<any>('users')
+  const parameterCollection = getCollection<any>('parameters')
 
   try {
-    // Build query
-    const query: any = {};
-    
+    // If order_id is provided, export single order with full details
+    if (filters.order_id) {
+      const _id = new ObjectId(filters.order_id)
+      const order = await collection.findOne({ _id })
+
+      if (!order) {
+        throw new Error('Test order not found')
+      }
+
+      return await exportSingleOrderToExcel(order, patientCollection, userCollection, parameterCollection)
+    }
+
+    // Build query for multiple orders
+    const query: any = {}
+
+    // Multiple orders export (original logic)
     // Default: current month if no filters
     if (!filters.month && !filters.status && !filters.patient_name) {
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      query.created_at = { $gte: startOfMonth, $lte: endOfMonth };
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      query.created_at = { $gte: startOfMonth, $lte: endOfMonth }
     } else if (filters.month) {
       // Parse month (format: YYYY-MM)
-      const [year, month] = filters.month.split('-').map(Number);
-      const startOfMonth = new Date(year, month - 1, 1);
-      const endOfMonth = new Date(year, month, 0);
-      query.created_at = { $gte: startOfMonth, $lte: endOfMonth };
+      const [year, month] = filters.month.split('-').map(Number)
+      const startOfMonth = new Date(year, month - 1, 1)
+      const endOfMonth = new Date(year, month, 0)
+      query.created_at = { $gte: startOfMonth, $lte: endOfMonth }
     }
 
     if (filters.status) {
-      query.status = filters.status;
+      query.status = filters.status
     }
 
-    const orders = await collection.find(query).sort({ created_at: -1 }).toArray();
+    // If patient_name filter, need to lookup patient first
+    if (filters.patient_name) {
+      const patients = await patientCollection
+        .find({ full_name: { $regex: filters.patient_name, $options: 'i' } })
+        .toArray()
+      if (patients.length > 0) {
+        query.patient_id = { $in: patients.map((p) => p._id) }
+      } else {
+        // No patients found, return empty result
+        query.patient_id = { $in: [] }
+      }
+    }
 
+    const orders = await collection.find(query).sort({ created_at: -1 }).toArray()
+
+    // If only one order found, export with full details (like PDF)
+    if (orders.length === 1) {
+      return await exportSingleOrderToExcel(orders[0], patientCollection, userCollection, parameterCollection)
+    }
+
+    // Multiple orders export - simple list
     // Create workbook
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Test Orders');
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Test Orders')
 
     // Define columns (3.5.4.1)
     worksheet.columns = [
       { header: 'Id Test Orders', key: 'id', width: 30 },
       { header: 'Patient Name', key: 'patient_name', width: 25 },
       { header: 'Gender', key: 'gender', width: 10 },
-      { header: 'Date of Birth', key: 'dob', width: 15 },
-      { header: 'Phone Number', key: 'phone', width: 15 },
+      { header: 'Date of Birth', key: 'date_of_birth', width: 15 },
+      { header: 'Phone Number', key: 'phone_number', width: 15 },
+      { header: 'Email', key: 'email', width: 25 },
       { header: 'Status', key: 'status', width: 15 },
       { header: 'Created By', key: 'created_by', width: 20 },
       { header: 'Created On', key: 'created_on', width: 20 },
       { header: 'Run By', key: 'run_by', width: 20 },
       { header: 'Run On', key: 'run_on', width: 20 }
-    ];
+    ]
 
     // Add data
     for (const order of orders) {
-      const patient = await patientCollection.findOne({ _id: order.patient_id });
-      const createdBy = await userCollection.findOne({ _id: order.created_by });
-      let runBy = null;
+      const patient = await patientCollection.findOne({ _id: order.patient_id })
+      const createdBy = await userCollection.findOne({ _id: order.created_by })
+      let runBy = null
       if (order.run_by) {
-        runBy = await userCollection.findOne({ _id: order.run_by });
+        runBy = await userCollection.findOne({ _id: order.run_by })
       }
 
       worksheet.addRow({
         id: order._id?.toString(),
         patient_name: patient?.full_name || 'N/A',
         gender: patient?.gender || 'N/A',
-        dob: patient?.DOB ? new Date(patient.DOB).toLocaleDateString() : 'N/A',
-        phone: patient?.phone || 'N/A',
+        date_of_birth: patient?.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'N/A',
+        phone_number: patient?.phone_number || 'N/A',
+        email: patient?.email || 'N/A',
         status: order.status,
         created_by: createdBy?.full_name || 'N/A',
         created_on: order.created_at ? new Date(order.created_at).toLocaleString() : 'N/A',
-        run_by: order.status === 'completed' && runBy ? runBy.full_name : '',
-        run_on: order.status === 'completed' && order.run_at ? new Date(order.run_at).toLocaleString() : ''
-      });
+        run_by: runBy?.full_name || 'N/A',
+        run_on: order.run_at ? new Date(order.run_at).toLocaleString() : 'N/A'
+      })
     }
 
     // Generate buffer
-    const buffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(buffer);
+    const buffer = await workbook.xlsx.writeBuffer()
+    return Buffer.from(buffer)
   } catch (err) {
-    console.error('Error in exportToExcel:', err);
-    throw new Error('Failed to export to Excel');
+    console.error('Error in exportToExcel:', err)
+    throw new Error('Failed to export to Excel')
   }
-};
+}
 
 // PDF Print (Step 24) - 3.5.4.2
 export const printToPDF = async (orderId: string): Promise<string> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const patientCollection = getCollection<any>('patients');
-  const userCollection = getCollection<any>('users');
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const patientCollection = getCollection<any>('patients')
+  const userCollection = getCollection<any>('users')
+  const parameterCollection = getCollection<any>('parameters')
 
   try {
-    const _id = new ObjectId(orderId);
-    const order = await collection.findOne({ _id });
+    const _id = new ObjectId(orderId)
+    const order = await collection.findOne({ _id })
 
     if (!order) {
-      throw new Error('Test order not found');
+      throw new Error('Test order not found')
     }
 
-    if (order.status !== 'completed') {
-      throw new Error('Test order must be completed to print');
+    if (order.status !== 'completed' && order.status !== 'ai_reviewed' && order.status !== 'reviewed') {
+      throw new Error('Test order must be completed to print')
     }
 
-    const patient = await patientCollection.findOne({ _id: order.patient_id });
-    const createdBy = await userCollection.findOne({ _id: order.created_by });
-    const runBy = order.run_by ? await userCollection.findOne({ _id: order.run_by }) : null;
+    // Fetch patient, users
+    const patient = await patientCollection.findOne({ _id: order.patient_id })
+    const createdBy = await userCollection.findOne({ _id: order.created_by })
+    const runBy = order.run_by ? await userCollection.findOne({ _id: order.run_by }) : null
+
+    // Fetch parameter names for test results
+    const parameterIds = order.test_results?.map((r) => r.parameter_id) || []
+    const parameters = await parameterCollection.find({ _id: { $in: parameterIds } }).toArray()
+    const parameterMap = new Map(parameters.map((p) => [p._id.toString(), p.parameter_name]))
+
+    // Fetch user names for comments
+    const commentUserIds = order.comments?.map((c) => c.created_by).filter(Boolean) || []
+    const commentUsers = await userCollection.find({ _id: { $in: commentUserIds } }).toArray()
+    const commentUserMap = new Map(commentUsers.map((u) => [u._id.toString(), u.full_name]))
 
     // Generate HTML for PDF (simplified for MVP)
     // In production, use libraries like pdfkit or puppeteer for proper PDF generation
@@ -1203,11 +1363,12 @@ export const printToPDF = async (orderId: string): Promise<string> => {
       <html>
       <head>
         <style>
-          body { font-family: Arial, sans-serif; }
+          body { font-family: Arial, sans-serif; padding: 20px; }
           table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
           th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background-color: #f2f2f2; }
-          h2 { color: #333; }
+          th { background-color: #f2f2f2; font-weight: bold; }
+          h1 { color: #333; margin-bottom: 20px; }
+          h2 { color: #333; margin-top: 30px; margin-bottom: 10px; }
         </style>
       </head>
       <body>
@@ -1215,12 +1376,13 @@ export const printToPDF = async (orderId: string): Promise<string> => {
         
         <h2>Order Information</h2>
         <table>
-          <tr><th>Id Test Orders</th><td>${order._id}</td></tr>
+          <tr><th>Id Test Orders</th><td>${order._id || order.order_number || 'N/A'}</td></tr>
           <tr><th>Patient Name</th><td>${patient?.full_name || 'N/A'}</td></tr>
           <tr><th>Gender</th><td>${patient?.gender || 'N/A'}</td></tr>
-          <tr><th>Date of Birth</th><td>${patient?.DOB ? new Date(patient.DOB).toLocaleDateString() : 'N/A'}</td></tr>
-          <tr><th>Phone Number</th><td>${patient?.phone || 'N/A'}</td></tr>
-          <tr><th>Status</th><td>${order.status}</td></tr>
+          <tr><th>Date of Birth</th><td>${patient?.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'N/A'}</td></tr>
+          <tr><th>Phone Number</th><td>${patient?.phone_number || 'N/A'}</td></tr>
+          <tr><th>Email</th><td>${patient?.email || 'N/A'}</td></tr>
+          <tr><th>Status</th><td>${order.status || 'N/A'}</td></tr>
           <tr><th>Created By</th><td>${createdBy?.full_name || 'N/A'}</td></tr>
           <tr><th>Created On</th><td>${order.created_at ? new Date(order.created_at).toLocaleString() : 'N/A'}</td></tr>
           <tr><th>Run By</th><td>${runBy?.full_name || 'N/A'}</td></tr>
@@ -1236,104 +1398,122 @@ export const printToPDF = async (orderId: string): Promise<string> => {
             <th>Reference Range</th>
             <th>Flagged</th>
           </tr>
-          ${order.test_results?.map(r => `
+          ${
+            order.test_results && order.test_results.length > 0
+              ? order.test_results
+                  .map((r) => {
+                    const parameterName =
+                      parameterMap.get(r.parameter_id?.toString()) || r.parameter_id?.toString() || 'N/A'
+                    return `
             <tr>
-              <td>${r.parameter_id}</td>
-              <td>${r.result_value}</td>
-              <td>${r.unit}</td>
+              <td>${parameterName}</td>
+              <td>${r.result_value ?? 'N/A'}</td>
+              <td>${r.unit || 'N/A'}</td>
               <td>${r.reference_range_text || 'N/A'}</td>
               <td>${r.is_flagged ? '⚠️ Yes' : 'No'}</td>
             </tr>
-          `).join('') || '<tr><td colspan="5">No results</td></tr>'}
+          `
+                  })
+                  .join('')
+              : '<tr><td colspan="5">No results</td></tr>'
+          }
         </table>
 
         <h2>Comments</h2>
         <table>
           <tr><th>Comment</th><th>Created By</th><th>Created At</th></tr>
-          ${order.comments?.map(c => `
+          ${
+            order.comments && order.comments.length > 0
+              ? order.comments
+                  .map((c) => {
+                    const createdByName = c.created_by
+                      ? commentUserMap.get(c.created_by.toString()) || c.created_by.toString()
+                      : 'N/A'
+                    return `
             <tr>
-              <td>${c.comment_text}</td>
-              <td>${c.created_by}</td>
+              <td>${c.comment_text || 'N/A'}</td>
+              <td>${createdByName}</td>
               <td>${c.created_at ? new Date(c.created_at).toLocaleString() : 'N/A'}</td>
             </tr>
-          `).join('') || '<tr><td colspan="3">No comments</td></tr>'}
+          `
+                  })
+                  .join('')
+              : '<tr><td colspan="3">No comments</td></tr>'
+          }
         </table>
       </body>
       </html>
-    `;
+    `
 
     // Return HTML (in production, convert to PDF using puppeteer or similar)
-    return html;
+    return html
   } catch (err) {
-    console.error('Error in printToPDF:', err);
-    throw new Error('Failed to generate PDF');
+    console.error('Error in printToPDF:', err)
+    throw new Error('Failed to generate PDF')
   }
-};
+}
 
 // Sync Raw Test Result (3.6.1.4)
-export const syncRawTestResult = async (
-  rawResultId: string,
-  userId: ObjectId
-): Promise<TestOrderDocument | null> => {
-  const collection = getCollection<TestOrderDocument>(COLLECTION);
-  const parameterCollection = getCollection<any>('parameters');
-  const patientCollection = getCollection<any>(PATIENT_COLLECTION);
-  const rawTestResultService = new RawTestResultService();
-  const now = new Date();
+export const syncRawTestResult = async (rawResultId: string, userId: ObjectId): Promise<TestOrderDocument | null> => {
+  const collection = getCollection<TestOrderDocument>(COLLECTION)
+  const parameterCollection = getCollection<any>('parameters')
+  const patientCollection = getCollection<any>(PATIENT_COLLECTION)
+  const rawTestResultService = new RawTestResultService()
+  const now = new Date()
 
   try {
     // 1. Load RawTestResult by ID
-    const rawResultResponse = await rawTestResultService.findById(rawResultId);
+    const rawResultResponse = await rawTestResultService.findById(rawResultId)
     if (!rawResultResponse.success || !rawResultResponse.data) {
-      throw new Error('Raw test result not found');
+      throw new Error('Raw test result not found')
     }
 
-    const rawTestResult = rawResultResponse.data;
+    const rawTestResult = rawResultResponse.data
 
     // Check if already synced
     if (rawTestResult.status === 'synced') {
-      throw new Error('Raw test result already synced');
+      throw new Error('Raw test result already synced')
     }
 
     // 2. Parse HL7 message
-    const parsedHL7 = parseHL7Message(rawTestResult.hl7_message);
+    const parsedHL7 = parseHL7Message(rawTestResult.hl7_message)
 
     // 3. Find test order by barcode
-    const testOrder = await collection.findOne({ barcode: parsedHL7.order.barcode || rawTestResult.barcode });
+    const testOrder = await collection.findOne({ barcode: parsedHL7.order.barcode || rawTestResult.barcode })
     if (!testOrder) {
-      throw new Error('Test order not found for this barcode');
+      throw new Error('Test order not found for this barcode')
     }
 
     // 4. Get patient for gender and age_group
-    const patient = testOrder.patient_id ? await patientCollection.findOne({ _id: testOrder.patient_id }) : null;
+    const patient = testOrder.patient_id ? await patientCollection.findOne({ _id: testOrder.patient_id }) : null
 
     // 5. Process each parsed result with flagging
     const processedResults = await Promise.all(
       parsedHL7.results.map(async (parsedResult) => {
         // Find parameter by code
-        const parameter = await parameterCollection.findOne({ parameter_code: parsedResult.parameter_code });
-        
+        const parameter = await parameterCollection.findOne({ parameter_code: parsedResult.parameter_code })
+
         if (!parameter) {
-          throw new Error(`Parameter with code ${parsedResult.parameter_code} not found`);
+          throw new Error(`Parameter with code ${parsedResult.parameter_code} not found`)
         }
 
         // Get parameter normal_range as fallback
-        let fallbackRange: { min?: number; max?: number; text?: string } | undefined;
+        let fallbackRange: { min?: number; max?: number; text?: string } | undefined
         if (parameter.normal_range) {
-          const range = parameter.normal_range as any;
+          const range = parameter.normal_range as any
           if (range.male && range.female && patient?.gender) {
-            const genderRange = patient.gender === 'male' ? range.male : range.female;
+            const genderRange = patient.gender === 'male' ? range.male : range.female
             fallbackRange = {
               min: genderRange.min,
               max: genderRange.max,
               text: genderRange.text || `${genderRange.min}-${genderRange.max} ${parameter.unit}`
-            };
+            }
           } else if (range.min !== undefined && range.max !== undefined) {
             fallbackRange = {
               min: range.min,
               max: range.max,
               text: range.text || `${range.min}-${range.max} ${parameter.unit}`
-            };
+            }
           }
         }
 
@@ -1344,7 +1524,7 @@ export const syncRawTestResult = async (
           patient?.gender,
           undefined, // age_group - can be calculated from patient DOB if needed
           fallbackRange
-        );
+        )
 
         return {
           parameter_id: parameter._id,
@@ -1355,9 +1535,9 @@ export const syncRawTestResult = async (
           flag_type: flaggingResult.flag_type,
           flagging_configuration_id: flaggingResult.flagging_configuration_id,
           measured_at: now
-        };
+        }
       })
-    );
+    )
 
     // 6-7. Update TestOrder and RawTestResult within transaction
     // Ensure both operations succeed or fail together
@@ -1377,10 +1557,10 @@ export const syncRawTestResult = async (
           }
         },
         { session }
-      );
+      )
 
       // 7. Update RawTestResult status
-      const rawTestResultCollection = getCollection<any>('raw_test_results');
+      const rawTestResultCollection = getCollection<any>('raw_test_results')
       await rawTestResultCollection.updateOne(
         { _id: new ObjectId(rawResultId) },
         {
@@ -1391,14 +1571,14 @@ export const syncRawTestResult = async (
           }
         },
         { session }
-      );
-    });
+      )
+    })
 
     // 8. Fetch updated order
-    const updated = await collection.findOne({ _id: testOrder._id });
-    return updated as TestOrderDocument | null;
+    const updated = await collection.findOne({ _id: testOrder._id })
+    return updated as TestOrderDocument | null
   } catch (err) {
-    console.error('Error in syncRawTestResult:', err);
-    return null;
+    console.error('Error in syncRawTestResult:', err)
+    return null
   }
-};
+}
