@@ -46,6 +46,10 @@
  *           type: string
  *           format: date-time
  *           nullable: true
+ *         configuration_id:
+ *           type: string
+ *           description: Reference to a saved Configuration (_id) applied to this instrument
+ *           example: 507f1f77bcf86cd799439099
  *         created_at:
  *           type: string
  *           format: date-time
@@ -108,6 +112,10 @@
  *           type: string
  *           format: date-time
  *           nullable: true
+ *         configuration_id:
+ *           type: string
+ *           description: Optional configuration to apply to the instrument (must be a valid Configuration _id)
+ *           example: 507f1f77bcf86cd799439099
  *         reagents:
  *           type: array
  *           description: Optional array of reagents to install during instrument creation (Use Case 2). All reagent info will be populated from inventory.
@@ -163,5 +171,9 @@
  *           type: string
  *           format: date-time
  *           nullable: true
+ *         configuration_id:
+ *           type: string
+ *           description: Optional configuration reference (Configuration _id)
+ *           example: 507f1f77bcf86cd799439099
  */
 

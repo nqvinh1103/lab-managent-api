@@ -19,6 +19,9 @@ export const createInstrumentValidation = [
   body('is_active')
     .notEmpty().withMessage('is_active is required')
     .isBoolean().withMessage('is_active must be a boolean'),
+  body('configuration_id')
+    .optional()
+    .isMongoId().withMessage('configuration_id must be a valid MongoId'),
   body('deactivated_at')
     .optional()
     .isISO8601().withMessage('Invalid date format for deactivated_at'),
@@ -49,6 +52,9 @@ export const updateInstrumentValidation = [
   body('is_active')
     .optional()
     .isBoolean().withMessage('is_active must be a boolean'),
+  body('configuration_id')
+    .optional()
+    .isMongoId().withMessage('configuration_id must be a valid MongoId'),
   body('deactivated_at')
     .optional()
     .isISO8601().withMessage('Invalid date format for deactivated_at'),
