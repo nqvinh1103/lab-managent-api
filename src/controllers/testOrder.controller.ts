@@ -974,7 +974,7 @@ export const aiPreviewOrder = async (req: AuthenticatedRequest, res: Response): 
     }
 
     try {
-      const { aiPreviewTestOrder } = await import('../services/testOrderReview.service')
+      const { aiPreviewTestOrder } = await import('../services/testOrderReview.service.js')
       const result = await aiPreviewTestOrder(id)
 
       sendSuccessResponse(res, HTTP_STATUS.OK, 'AI preview completed successfully', result)
