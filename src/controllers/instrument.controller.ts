@@ -2,20 +2,24 @@ import { ObjectId } from 'mongodb'
 import { Request, Response } from 'express'
 import * as instrumentService from '../services/instrument.service'
 import { HTTP_STATUS } from '../constants/httpStatus'
+import { MESSAGES } from '../constants/messages'
 import { sendSuccessResponse, sendErrorResponse } from '../utils/response.helper'
+import { logEvent } from '../utils/eventLog.helper'
+import { getInstrumentService } from '../services/instrument.service'
 
 export const createInstrument = async (req: Request, res: Response) => {
   try {
     const { name, model } = req.body
 
-    // Validate required fields
-    if (!name || !model) {
-      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Name and model are required')
-    }
-
+    // Check authentication first
     const userId = req.user?.id
     if (!userId) {
       return sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, 'User not authenticated')
+    }
+
+    // Validate required fields
+    if (!name) {
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Name is required')
     }
 
     const result = await instrumentService.createInstrument({ name, model }, new ObjectId(userId))
@@ -23,6 +27,13 @@ export const createInstrument = async (req: Request, res: Response) => {
     if (!result.success) {
       return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, result.error || 'Failed to create instrument')
     }
+
+    // Log the creation event
+    await logEvent('CREATE', 'Instrument', result.data._id.toString(), userId, `Created instrument: ${name}`, {
+      name,
+      model,
+      action: 'create_instrument'
+    })
 
     return sendSuccessResponse(res, HTTP_STATUS.CREATED, 'Instrument created successfully', result.data)
   } catch (error) {
@@ -71,6 +82,12 @@ export const updateInstrument = async (req: Request, res: Response) => {
     const { id } = req.params
     const { name, model } = req.body
 
+    // Check authentication first
+    const userId = req.user?.id
+    if (!userId) {
+      return sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, 'User not authenticated')
+    }
+
     // Validate ObjectId
     if (!ObjectId.isValid(id)) {
       return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid instrument ID')
@@ -81,16 +98,18 @@ export const updateInstrument = async (req: Request, res: Response) => {
       return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'At least one field (name or model) is required')
     }
 
-    const userId = req.user?.id
-    if (!userId) {
-      return sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, 'User not authenticated')
-    }
-
     const updatedInstrument = await instrumentService.updateInstrument(id, { name, model }, new ObjectId(userId))
 
     if (!updatedInstrument) {
       return sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, 'Instrument not found')
     }
+
+    // Log the update event
+    await logEvent('UPDATE', 'Instrument', id, userId, `Updated instrument: ${name || model}`, {
+      name,
+      model,
+      action: 'update_instrument'
+    })
 
     return sendSuccessResponse(res, HTTP_STATUS.OK, 'Instrument updated successfully', updatedInstrument)
   } catch (error) {
