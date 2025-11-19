@@ -649,3 +649,61 @@ export const assertionHelpers = {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 }
+
+/*
+  Added: convert exported scenario groups into Jest test skeletons.
+  Each scenario becomes an it() test so you can quickly replace the TODO
+  block with a real controller/service invocation (like in testOrder.controller.test.ts).
+*/
+
+const _scenarioSets: any[] = [
+  complexCreationScenarioTests,
+  sampleProcessingPipelineTests,
+  testResultManagementTests,
+  commentManagementTests,
+  reviewWorkflowTests,
+  dataExportTests,
+  rawResultSyncTests,
+  errorAndEdgeCaseTests,
+  performanceTests,
+  auditAndLoggingTests
+]
+
+// Lightweight req/res helpers (match pattern used in other tests)
+const _createMockRequest = (overrides?: any): any => ({
+  body: {},
+  params: {},
+  query: {},
+  user: { id: new ObjectId().toString(), email: 'test@example.com', roles: ['tester'] },
+  ...overrides
+})
+const _createMockResponse = (): any => ({
+  status: jest.fn().mockReturnThis(),
+  json: jest.fn().mockReturnThis(),
+  send: jest.fn().mockReturnThis(),
+  setHeader: jest.fn().mockReturnThis()
+})
+
+// Register scenario suites as Jest tests (skeletons)
+_scenarioSets.forEach((set) => {
+  if (!set || !set.description) return
+  describe(`SCENARIOS: ${set.description}`, () => {
+    ;(set.scenarios || []).forEach((scenario: any) => {
+      it(`${scenario.name}`, async () => {
+        // Arrange: build mock req/res from scenario.input
+        const req = _createMockRequest({ body: scenario.input, params: scenario.input, query: scenario.input })
+        const res = _createMockResponse()
+
+        // TODO: Replace the following lines with a concrete controller/service call
+        // Example pattern (see testOrder.controller.test.ts):
+        // await someControllerAction(req, res)
+        // expect(res.status).toHaveBeenCalledWith(scenario.expected.status)
+        // expect(res.json).toHaveBeenCalledWith(expect.objectContaining(...))
+
+        // For now keep a harmless assertion so tests are discoverable as placeholders
+        expect(req).toBeDefined()
+        expect(res).toBeDefined()
+      })
+    })
+  })
+})

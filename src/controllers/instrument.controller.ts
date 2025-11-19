@@ -1,242 +1,129 @@
-import { Request, Response } from 'express';
-import { ObjectId } from 'mongodb';
-import { HTTP_STATUS } from '../constants/httpStatus';
-import { MESSAGES } from '../constants/messages';
-import { InstrumentService } from '../services/instrument.service';
-import { logEvent } from '../utils/eventLog.helper';
-import { sendErrorResponse, sendSuccessResponse } from '../utils/response.helper';
+import { ObjectId } from 'mongodb'
+import { Request, Response } from 'express'
+import * as instrumentService from '../services/instrument.service'
+import { HTTP_STATUS } from '../constants/httpStatus'
+import { sendSuccessResponse, sendErrorResponse } from '../utils/response.helper'
 
-let instrumentService: InstrumentService | null = null;
-
-const getInstrumentService = () => {
-  if (!instrumentService) {
-    instrumentService = new InstrumentService();
-  }
-  return instrumentService;
-};
-
-// Create instrument
-export const createInstrument = async (req: Request, res: Response): Promise<void> => {
+export const createInstrument = async (req: Request, res: Response) => {
   try {
-    if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
-      return;
+    const { name, model } = req.body
+
+    // Validate required fields
+    if (!name || !model) {
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Name and model are required')
     }
 
-    const result = await getInstrumentService().create(req.body, req.user.id);
+    const userId = req.user?.id
+    if (!userId) {
+      return sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, 'User not authenticated')
+    }
+
+    const result = await instrumentService.createInstrument({ name, model }, new ObjectId(userId))
 
     if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || MESSAGES.DB_SAVE_ERROR,
-        error: result.error
-      });
-      return;
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, result.error || 'Failed to create instrument')
     }
 
-    // Log instrument creation
-    await logEvent(
-      'CREATE',
-      'Instrument',
-      result.data!._id.toString(),
-      req.user.id,
-      `Created instrument: ${result.data!.instrument_name}`,
-      { 
-        instrument_name: result.data!.instrument_name,
-        instrument_type: result.data!.instrument_type,
-        serial_number: result.data!.serial_number
-      }
-    );
-
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      message: MESSAGES.CREATED,
-      data: result.data
-    });
+    return sendSuccessResponse(res, HTTP_STATUS.CREATED, 'Instrument created successfully', result.data)
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to create instrument'
-    });
+    return sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to create instrument', error)
   }
-};
+}
 
-// Get all instruments with pagination
-export const getAllInstruments = async (req: Request, res: Response): Promise<void> => {
+export const getInstruments = async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = req.query.search as string;
-
-    const result = await getInstrumentService().findAll(page, limit, search);
-
-    if (!result.success) {
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: result.error || MESSAGES.DB_QUERY_ERROR,
-        error: result.error
-      });
-      return;
+    const userId = req.user?.id
+    if (!userId) {
+      return sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, 'User not authenticated')
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data?.instruments || [],
-      pagination: {
-        page: result.data?.page || page,
-        limit: result.data?.limit || limit,
-        total: result.data?.total || 0,
-        totalPages: Math.ceil((result.data?.total || 0) / (result.data?.limit || limit))
-      }
-    });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get instruments'
-    });
-  }
-};
+    const instruments = await instrumentService.getAllInstruments()
 
-// Get instrument by ID
-export const getInstrumentById = async (req: Request, res: Response): Promise<void> => {
+    return sendSuccessResponse(res, HTTP_STATUS.OK, 'Instruments retrieved successfully', instruments)
+  } catch (error) {
+    return sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to retrieve instruments', error)
+  }
+}
+
+export const getInstrumentById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const result = await getInstrumentService().findById(id);
+    const { id } = req.params
 
-    if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: result.error || MESSAGES.NOT_FOUND,
-        error: result.error
-      });
-      return;
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid instrument ID')
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.SUCCESS,
-      data: result.data
-    });
-  } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to get instrument'
-    });
-  }
-};
+    const instrument = await instrumentService.getInstrumentById(id)
 
-// Update instrument
-export const updateInstrument = async (req: Request, res: Response): Promise<void> => {
+    if (!instrument) {
+      return sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, 'Instrument not found')
+    }
+
+    return sendSuccessResponse(res, HTTP_STATUS.OK, 'Instrument retrieved successfully', instrument)
+  } catch (error) {
+    return sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to retrieve instrument', error)
+  }
+}
+
+export const updateInstrument = async (req: Request, res: Response) => {
   try {
-    if (!req.user?.id) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: MESSAGES.UNAUTHORIZED,
-        error: 'User not authenticated'
-      });
-      return;
+    const { id } = req.params
+    const { name, model } = req.body
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid instrument ID')
     }
 
-    const { id } = req.params;
-    const result = await getInstrumentService().findByIdAndUpdate(id, req.body, req.user.id);
-
-    if (!result.success) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: result.error || MESSAGES.DB_UPDATE_ERROR,
-        error: result.error
-      });
-      return;
+    // Validate required fields
+    if (!name && !model) {
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'At least one field (name or model) is required')
     }
 
-    // Log the update
-    const changedFields = Object.keys(req.body);
-    await logEvent(
-      'UPDATE',
-      'Instrument',
-      id,
-      req.user.id,
-      `Updated instrument: ${result.data!.instrument_name}`,
-      { 
-        changed_fields: changedFields,
-        instrument_name: result.data!.instrument_name
-      }
-    );
+    const userId = req.user?.id
+    if (!userId) {
+      return sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, 'User not authenticated')
+    }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.UPDATED,
-      data: result.data
-    });
+    const updatedInstrument = await instrumentService.updateInstrument(id, { name, model }, new ObjectId(userId))
+
+    if (!updatedInstrument) {
+      return sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, 'Instrument not found')
+    }
+
+    return sendSuccessResponse(res, HTTP_STATUS.OK, 'Instrument updated successfully', updatedInstrument)
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to update instrument'
-    });
+    return sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to update instrument', error)
   }
-};
+}
 
-// Delete instrument
-export const deleteInstrument = async (req: Request, res: Response): Promise<void> => {
+export const deleteInstrument = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    // Get instrument details before deletion for logging
-    const instrumentToDelete = await getInstrumentService().findById(id);
-    if (!instrumentToDelete.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: MESSAGES.NOT_FOUND,
-        error: 'Instrument not found'
-      });
-      return;
+    const { id } = req.params
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return sendErrorResponse(res, HTTP_STATUS.BAD_REQUEST, 'Invalid instrument ID')
     }
 
-    const result = await getInstrumentService().deleteById(id);
+    const instrument = await instrumentService.getInstrumentById(id)
 
-    if (!result.success) {
-      res.status(HTTP_STATUS.NOT_FOUND).json({
-        success: false,
-        message: result.error || MESSAGES.DB_DELETE_ERROR,
-        error: result.error
-      });
-      return;
+    if (!instrument) {
+      return sendErrorResponse(res, HTTP_STATUS.NOT_FOUND, 'Instrument not found')
     }
 
-    // Log the deletion
-    await logEvent(
-      'DELETE',
-      'Instrument',
-      id,
-      req.user?.id,
-      `Deleted instrument: ${instrumentToDelete.data!.instrument_name}`,
-      { 
-        instrument_name: instrumentToDelete.data!.instrument_name,
-        instrument_type: instrumentToDelete.data!.instrument_type
-      }
-    );
+    const result = await instrumentService.deleteInstrument(id)
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: MESSAGES.DELETED,
-      data: result.data
-    });
+    if (!result) {
+      return sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to delete instrument')
+    }
+
+    return sendSuccessResponse(res, HTTP_STATUS.OK, 'Instrument deleted successfully')
   } catch (error) {
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: MESSAGES.INTERNAL_ERROR,
-      error: error instanceof Error ? error.message : 'Failed to delete instrument'
-    });
+    return sendErrorResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to delete instrument', error)
   }
-};
+}
 
 /**
  * @openapi
@@ -249,7 +136,7 @@ export const deleteInstrument = async (req: Request, res: Response): Promise<voi
  *       Change instrument mode to ready, maintenance, or inactive.
  *       - ready: Requires QC check within last 24 hours. Clears deactivated_at.
  *       - maintenance/inactive: Requires mode_reason. Sets deactivated_at when mode='inactive'.
- *       
+ *
  *       Note: This replaces the old activate/deactivate endpoints. Use mode='ready' to activate and mode='inactive' to deactivate.
  *     security:
  *       - bearerAuth: []
@@ -293,22 +180,22 @@ export const deleteInstrument = async (req: Request, res: Response): Promise<voi
  */
 export const changeModeInstrument = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const { mode, mode_reason } = req.body;
+    const { id } = req.params
+    const { mode, mode_reason } = req.body
 
     if (!req.user?.id) {
-      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated');
-      return;
+      sendErrorResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED, 'User not authenticated')
+      return
     }
 
-    const updatedBy = new ObjectId(req.user.id);
-    const result = await getInstrumentService().changeMode(id, mode, mode_reason, updatedBy);
+    const updatedBy = new ObjectId(req.user.id)
+    const result = await getInstrumentService().changeMode(id, mode, mode_reason, updatedBy)
 
     if (!result.success) {
-      const statusCode = result.statusCode || HTTP_STATUS.BAD_REQUEST;
-      const errorMessage = result.error || 'Failed to change instrument mode';
-      sendErrorResponse(res, statusCode, errorMessage, errorMessage);
-      return;
+      const statusCode = result.statusCode || HTTP_STATUS.BAD_REQUEST
+      const errorMessage = result.error || 'Failed to change instrument mode'
+      sendErrorResponse(res, statusCode, errorMessage, errorMessage)
+      return
     }
 
     // Log mode change
@@ -318,22 +205,21 @@ export const changeModeInstrument = async (req: Request, res: Response): Promise
       id,
       req.user?.id,
       `Changed instrument mode: ${result.data!.instrument_name} to ${mode}`,
-      { 
+      {
         instrument_name: result.data!.instrument_name,
         mode: mode,
         mode_reason: mode_reason,
         action: 'change_mode'
       }
-    );
+    )
 
-    sendSuccessResponse(res, HTTP_STATUS.OK, `Instrument mode changed to ${mode}`, result.data);
+    sendSuccessResponse(res, HTTP_STATUS.OK, `Instrument mode changed to ${mode}`, result.data)
   } catch (error) {
     sendErrorResponse(
       res,
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       MESSAGES.INTERNAL_ERROR,
       error instanceof Error ? error.message : 'Failed to change instrument mode'
-    );
+    )
   }
-};
-
+}

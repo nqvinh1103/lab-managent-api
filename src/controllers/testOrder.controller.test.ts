@@ -1,3 +1,30 @@
+// Print minimal runtime info to terminal when running `npm test`
+console.log('npm test -> running testOrder.controller tests', {
+  time: new Date().toISOString(),
+  pid: process.pid,
+  argv: process.argv.slice(2)
+})
+
+// Add: ensure env and mock AI-related modules before importing controllers to avoid side-effects
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-key'
+;(global as any).importModuleDynamicallyCallback = (specifier: any) => {
+  // attempt to resolve with require for test environment
+  try {
+    // specifier may be relative; require should resolve using Node resolution rules
+    return Promise.resolve(require(specifier))
+  } catch (err) {
+    return Promise.reject(err)
+  }
+}
+jest.mock('../services/testOrderReview.service', () => ({
+  reviewTestOrder: jest.fn(),
+  aiPreviewTestOrder: jest.fn().mockResolvedValue({ predictions: [] }),
+  aiReviewTestOrder: jest.fn().mockResolvedValue({ status: 'ai_reviewed', suggestions: [] })
+}))
+jest.mock('../services/openai.service', () => ({
+  callOpenAI: jest.fn().mockResolvedValue({})
+}))
+
 import { Request, Response } from 'express'
 import { ObjectId } from 'mongodb'
 import {
@@ -927,9 +954,8 @@ describe('TestOrderController', () => {
         predictions: [{ parameter: 'glucose', suggestion: 'flag', reason: 'High value' }]
       }
 
-      jest.doMock('../services/testOrderReview.service', () => ({
-        aiPreviewTestOrder: jest.fn().mockResolvedValue(mockResult)
-      }))
+      // mock trực tiếp trên service đã được jest.mock ở trên
+      ;(testOrderReviewService.aiPreviewTestOrder as jest.Mock).mockResolvedValue(mockResult)
 
       await aiPreviewOrder(req, res)
 
