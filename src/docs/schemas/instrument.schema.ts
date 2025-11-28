@@ -13,6 +13,7 @@
  *           example: Hematology Analyzer X1
  *         instrument_type:
  *           type: string
+ *           enum: [Hematology Analyzer, Chemistry Analyzer, Immunology Analyzer, Coagulation Analyzer, Blood Gas Analyzer]
  *           example: Hematology Analyzer
  *         serial_number:
  *           type: string
@@ -69,7 +70,7 @@
  *           example: Hematology Analyzer X1
  *         instrument_type:
  *           type: string
- *           minLength: 2
+ *           enum: [Hematology Analyzer, Chemistry Analyzer, Immunology Analyzer, Coagulation Analyzer, Blood Gas Analyzer]
  *           example: Hematology Analyzer
  *         serial_number:
  *           type: string
@@ -127,7 +128,7 @@
  *           minLength: 2
  *         instrument_type:
  *           type: string
- *           minLength: 2
+ *           enum: [Hematology Analyzer, Chemistry Analyzer, Immunology Analyzer, Coagulation Analyzer, Blood Gas Analyzer]
  *         serial_number:
  *           type: string
  *         mode:

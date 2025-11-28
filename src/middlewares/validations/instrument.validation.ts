@@ -1,4 +1,5 @@
 import { body, param, query } from 'express-validator';
+import { InstrumentType } from '../../models/Configuration';
 
 export const createInstrumentValidation = [
   body('instrument_name')
@@ -8,7 +9,8 @@ export const createInstrumentValidation = [
   body('instrument_type')
     .notEmpty().withMessage('Instrument type is required')
     .trim()
-    .isLength({ min: 2 }).withMessage('Instrument type must be at least 2 characters'),
+    .isIn(Object.values(InstrumentType))
+    .withMessage('Invalid instrument type. Must be one of: ' + Object.values(InstrumentType).join(', ')),
   body('serial_number')
     .notEmpty().withMessage('Serial number is required')
     .trim()
@@ -45,7 +47,8 @@ export const updateInstrumentValidation = [
   body('instrument_type')
     .optional()
     .trim()
-    .isLength({ min: 2 }).withMessage('Instrument type must be at least 2 characters'),
+    .isIn(Object.values(InstrumentType))
+    .withMessage('Invalid instrument type. Must be one of: ' + Object.values(InstrumentType).join(', ')),
   body('serial_number')
     .optional()
     .trim()
