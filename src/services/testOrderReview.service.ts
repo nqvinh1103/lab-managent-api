@@ -1,14 +1,40 @@
 import { ObjectId } from 'mongodb';
 import { getCollection } from '../config/database';
-import { TestOrderDocument } from '../models/TestOrder';
 import { PatientDocument } from '../models/Patient';
-import { analyzeTestResults, AIAssessment } from './openai.service';
-import { validateAdjustments } from '../utils/reviewValidation.helper';
-import { applyFlagging } from '../utils/flagging.helper';
+import { TestOrderDocument } from '../models/TestOrder';
 import { logEvent } from '../utils/eventLog.helper';
+import { applyFlagging } from '../utils/flagging.helper';
+import { validateAdjustments } from '../utils/reviewValidation.helper';
+import { AIAssessment, analyzeTestResults } from './openai.service';
 
 const COLLECTION = 'test_orders';
 const PATIENT_COLLECTION = 'patients';
+
+/**
+ * Format AI assessment into a readable comment text
+ */
+const formatAIAssessmentAsComment = (assessment: AIAssessment): string => {
+  let comment = `[AI Review - ${assessment.overall_status.toUpperCase()}]\n\n`;
+  comment += `${assessment.assessment}\n\n`;
+  
+  if (assessment.flagged_issues && assessment.flagged_issues.length > 0) {
+    comment += `Vấn đề đáng chú ý:\n`;
+    assessment.flagged_issues.forEach(issue => {
+      comment += `- ${issue}\n`;
+    });
+    comment += `\n`;
+  }
+  
+  if (assessment.recommendations && assessment.recommendations.length > 0) {
+    comment += `Khuyến nghị:\n`;
+    assessment.recommendations.forEach(rec => {
+      const paramName = rec.parameter_name || rec.parameter_id;
+      comment += `- ${paramName}: ${rec.reason}\n`;
+    });
+  }
+  
+  return comment.trim();
+};
 
 /**
  * Manual review of test order
@@ -318,7 +344,10 @@ export const aiReviewTestOrder = async (
       });
     }
 
-    // Update status to ai_reviewed (but don't apply any changes)
+    // Format assessment as comment
+    const formattedComment = formatAIAssessmentAsComment(assessment);
+
+    // Update status to ai_reviewed and add AI assessment as comment
     await collection.updateOne(
       { _id },
       {
@@ -327,6 +356,15 @@ export const aiReviewTestOrder = async (
           ai_reviewed_at: now,
           updated_at: now,
           updated_by: userId
+        },
+        $push: {
+          comments: {
+            comment_text: formattedComment,
+            created_by: userId,
+            created_at: now,
+            updated_at: now,
+            updated_by: userId
+          }
         }
       }
     );
